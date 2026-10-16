@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,120 +13,132 @@ import { ScreenContainer } from '../../components/ui/ScreenContainer';
 import { SearchInput } from '../../components/ui/SearchInput';
 import { CampaignCard } from '../../components/campaigns/CampaignCard';
 import { EmptyState } from '../../components/ui/EmptyState';
-import { LoadingState } from '../../components/ui/LoadingState';
-import { ErrorState } from '../../components/ui/ErrorState';
-import { colors, typography, spacing, radii } from '../../theme';
-import { api } from '../../services/api';
-import { Campaign } from '../../types/campaign';
+import { FilterModal, FilterState } from '../../components/campaigns/FilterModal';
+import { colors, typography, spacing, radii, touchTargets } from '../../theme';
+import { useCampaignStore } from '../../services/campaignStore';
+import { CampaignCategory } from '../../types/campaign';
 
-const CATEGORIES = [
+const CATEGORIES: Array<'All' | CampaignCategory> = [
   'All',
-  'Civic',
   'Environment',
   'Health',
-  'Consumer',
-  'Economic Policy',
+  'Science',
   'Education',
+  'Public Policy',
+  'Economic Policy',
   'Community',
+  'Arts & Culture',
+  'Business',
+  'Other',
 ];
 
-const SORT_OPTIONS = [
-  { id: 'trending', label: 'Trending' },
-  { id: 'nearly_funded', label: 'Nearly Funded' },
-  { id: 'trust_score', label: 'Highest Trust (UUTS)' },
-  { id: 'newest', label: 'Newest' },
+const SORT_OPTIONS: Array<{ id: 'recommended' | 'most_funded' | 'ending_soon' | 'newest'; label: string }> = [
+  { id: 'recommended', label: 'Recommended' },
+  { id: 'most_funded', label: 'Most Funded' },
+  { id: 'ending_soon', label: 'Ending Soon' },
+  { id: 'newest', label: 'Recently Added' },
 ];
 
 export default function ExploreScreen() {
   const router = useRouter();
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [selectedSort, setSelectedSort] = useState('trending');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const store = useCampaignStore();
 
-  const loadCampaigns = async () => {
-    try {
-      setError(null);
-      const items = await api.getCampaigns({
-        category: selectedCategory,
-        search: searchQuery,
-        sort: selectedSort,
-      });
-      setCampaigns(items);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to fetch campaigns');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [selectedSort, setSelectedSort] = useState<'recommended' | 'most_funded' | 'ending_soon' | 'newest'>('recommended');
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
+  const [filters, setFilters] = useState<FilterState>({
+    status: 'all',
+    progressRange: 'all',
+    category: 'All',
+  });
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // Sync category chip with filter modal
+  const handleCategorySelect = (cat: string) => {
+    setSelectedCategory(cat);
+    setFilters(prev => ({ ...prev, category: cat }));
   };
 
-  useEffect(() => {
-    loadCampaigns();
-  }, [selectedCategory, selectedSort]);
+  const handleApplyFilters = (newFilters: FilterState) => {
+    setFilters(newFilters);
+    setSelectedCategory(newFilters.category);
+  };
 
-  // Debounced search trigger
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      loadCampaigns();
-    }, 250);
-    return () => clearTimeout(handler);
-  }, [searchQuery]);
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filters.status !== 'all') count++;
+    if (filters.progressRange !== 'all') count++;
+    if (filters.category !== 'All') count++;
+    return count;
+  }, [filters]);
+
+  const filteredCampaigns = useMemo(() => {
+    return store.filterAndSort({
+      category: selectedCategory,
+      search: searchQuery,
+      sort: selectedSort,
+      status: filters.status,
+      progressRange: filters.progressRange,
+    });
+  }, [store, selectedCategory, searchQuery, selectedSort, filters]);
+
+  const resetAllFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory('All');
+    setFilters({
+      status: 'all',
+      progressRange: 'all',
+      category: 'All',
+    });
+  };
 
   const onRefresh = () => {
-    setRefreshing(true);
-    loadCampaigns();
+    setIsRefreshing(true);
+    setTimeout(() => {
+      setIsRefreshing(false);
+    }, 450);
   };
 
   return (
-    <ScreenContainer refreshing={refreshing} onRefresh={onRefresh} padded={true}>
-      {/* Header */}
+    <ScreenContainer refreshing={isRefreshing} onRefresh={onRefresh} padded={true}>
+      {/* 1. Header */}
       <View style={styles.header}>
         <Text style={styles.title}>Explore Campaigns</Text>
         <Text style={styles.subtitle}>
-          Discover fact-checked advocacy campaigns seeking advertising amplification.
+          Discover community-backed advocacy campaigns seeking advertising distribution.
         </Text>
       </View>
 
-      {/* Search Input */}
+      {/* 2. Controlled Search Bar */}
       <SearchInput
         value={searchQuery}
         onChangeText={setSearchQuery}
-        placeholder="Search keywords, topics, or organizations..."
-        style={styles.searchInput}
+        placeholder="Search topics, creators, keywords, or locations..."
+        onClear={() => setSearchQuery('')}
+        style={styles.searchBar}
       />
 
-      {/* Horizontal Category Chips */}
-      <View style={styles.categoryContainer}>
+      {/* 3. Horizontally Scrollable Category Chips */}
+      <View style={styles.categoriesContainer}>
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.categoryScroll}
+          contentContainerStyle={styles.categoriesScrollContent}
         >
-          {CATEGORIES.map(category => {
-            const isSelected = selectedCategory === category;
+          {CATEGORIES.map(cat => {
+            const isSelected = selectedCategory === cat;
             return (
               <TouchableOpacity
-                key={category}
-                onPress={() => setSelectedCategory(category)}
+                key={cat}
+                onPress={() => handleCategorySelect(cat)}
                 activeOpacity={0.7}
-                style={[
-                  styles.categoryChip,
-                  isSelected && styles.categoryChipSelected,
-                ]}
+                style={[styles.categoryChip, isSelected && styles.categoryChipActive]}
                 accessibilityRole="button"
                 accessibilityState={{ selected: isSelected }}
               >
-                <Text
-                  style={[
-                    styles.categoryText,
-                    isSelected && styles.categoryTextSelected,
-                  ]}
-                >
-                  {category}
+                <Text style={[styles.categoryChipText, isSelected && styles.categoryChipTextActive]}>
+                  {cat}
                 </Text>
               </TouchableOpacity>
             );
@@ -133,9 +146,36 @@ export default function ExploreScreen() {
         </ScrollView>
       </View>
 
-      {/* Sorting & Filter Pill Row */}
-      <View style={styles.sortRow}>
-        <Text style={styles.sortLabel}>SORT BY:</Text>
+      {/* 4. Sorting & Filter Controls Row */}
+      <View style={styles.controlsRow}>
+        {/* Filter Modal Trigger Button with Count Badge */}
+        <TouchableOpacity
+          onPress={() => setFilterModalVisible(true)}
+          style={[styles.filterTriggerBtn, activeFilterCount > 0 && styles.filterTriggerBtnActive]}
+          activeOpacity={0.7}
+          accessibilityLabel="Open campaign filters"
+        >
+          <Ionicons
+            name="filter-outline"
+            size={16}
+            color={activeFilterCount > 0 ? colors.textInverse : colors.primary}
+          />
+          <Text
+            style={[
+              styles.filterTriggerText,
+              activeFilterCount > 0 && styles.filterTriggerTextActive,
+            ]}
+          >
+            Filters
+          </Text>
+          {activeFilterCount > 0 && (
+            <View style={styles.filterCountBadge}>
+              <Text style={styles.filterCountText}>{activeFilterCount}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+
+        {/* Horizontal Sort Pills */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortScroll}>
           {SORT_OPTIONS.map(opt => {
             const isActive = selectedSort === opt.id;
@@ -146,7 +186,7 @@ export default function ExploreScreen() {
                 activeOpacity={0.7}
                 style={[styles.sortPill, isActive && styles.sortPillActive]}
               >
-                <Text style={[styles.sortText, isActive && styles.sortTextActive]}>
+                <Text style={[styles.sortPillText, isActive && styles.sortPillTextActive]}>
                   {opt.label}
                 </Text>
               </TouchableOpacity>
@@ -155,41 +195,55 @@ export default function ExploreScreen() {
         </ScrollView>
       </View>
 
-      {/* Results Header */}
+      {/* 5. Results Counter & Active Filter Dismissals */}
       <View style={styles.resultsInfoRow}>
         <Text style={styles.resultsCount}>
-          {campaigns.length} {campaigns.length === 1 ? 'campaign' : 'campaigns'} available
+          {filteredCampaigns.length} {filteredCampaigns.length === 1 ? 'campaign' : 'campaigns'} found
         </Text>
-        <View style={styles.cpmBadge}>
-          <Text style={styles.cpmBadgeText}>Avg $37 CPM benchmark</Text>
-        </View>
+        {(searchQuery.length > 0 || activeFilterCount > 0) && (
+          <TouchableOpacity onPress={resetAllFilters} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={styles.resetFiltersLink}>Reset all</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
-      {/* Feed Content */}
-      {loading && !refreshing ? (
-        <LoadingState message="Filtering verified campaigns..." />
-      ) : error ? (
-        <ErrorState message={error} onRetry={loadCampaigns} />
-      ) : campaigns.length === 0 ? (
-        <EmptyState
-          icon="search-outline"
-          title="No campaigns found"
-          description={`We couldn't find any amplification campaigns matching "${searchQuery || selectedCategory}". Try adjusting your filters.`}
-          actionTitle="Reset Filters"
-          onActionPress={() => {
-            setSelectedCategory('All');
-            setSearchQuery('');
-          }}
-        />
+      {/* 6. Campaign Feed & Required States */}
+      {filteredCampaigns.length === 0 ? (
+        searchQuery.trim().length > 0 ? (
+          <EmptyState
+            icon="search-outline"
+            title="No matches found"
+            description={`We couldn't find any amplification campaigns matching "${searchQuery}". Check for typos or try broader keywords.`}
+            actionTitle="Clear Search"
+            onActionPress={() => setSearchQuery('')}
+          />
+        ) : (
+          <EmptyState
+            icon="filter-outline"
+            title="No campaigns match these filters"
+            description="Try loosening your status or funding progress criteria to view more available campaigns."
+            actionTitle="Reset All Filters"
+            onActionPress={resetAllFilters}
+          />
+        )
       ) : (
-        campaigns.map(campaign => (
+        filteredCampaigns.map(camp => (
           <CampaignCard
-            key={campaign.id}
-            campaign={campaign}
-            onPress={() => router.push(`/campaign/${campaign.id}`)}
+            key={camp.id}
+            campaign={camp}
+            onPress={() => router.push(`/campaign/${camp.id}`)}
           />
         ))
       )}
+
+      {/* Filter Modal */}
+      <FilterModal
+        visible={filterModalVisible}
+        onClose={() => setFilterModalVisible(false)}
+        filters={filters}
+        onApply={handleApplyFilters}
+        categories={CATEGORIES}
+      />
     </ScreenContainer>
   );
 }
@@ -209,14 +263,14 @@ const styles = StyleSheet.create({
     marginTop: spacing.xxs,
     lineHeight: 20,
   },
-  searchInput: {
+  searchBar: {
     marginBottom: spacing.sm,
   },
-  categoryContainer: {
+  categoriesContainer: {
     marginHorizontal: -spacing.md,
     marginBottom: spacing.sm,
   },
-  categoryScroll: {
+  categoriesScrollContent: {
     paddingHorizontal: spacing.md,
     gap: spacing.xs,
   },
@@ -231,41 +285,72 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  categoryChipSelected: {
+  categoryChipActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  categoryText: {
+  categoryChipText: {
     ...typography.labelMedium,
     color: colors.textSecondary,
+    fontSize: 12,
   },
-  categoryTextSelected: {
+  categoryChipTextActive: {
     color: colors.textInverse,
     fontWeight: '700',
   },
 
-  // Sort row
-  sortRow: {
+  // Controls Row
+  controlsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: -spacing.md,
-    paddingHorizontal: spacing.md,
     marginBottom: spacing.md,
     gap: spacing.xs,
   },
-  sortLabel: {
+  filterTriggerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6,
+    gap: 4,
+    minHeight: 34,
+  },
+  filterTriggerBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  filterTriggerText: {
     ...typography.labelSmall,
-    color: colors.textTertiary,
-    fontSize: 10,
+    color: colors.primary,
     fontWeight: '700',
+    fontSize: 11,
+  },
+  filterTriggerTextActive: {
+    color: colors.textInverse,
+  },
+  filterCountBadge: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: colors.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterCountText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: colors.primaryDark,
   },
   sortScroll: {
     gap: spacing.xs,
   },
   sortPill: {
     paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: radii.sm,
+    paddingVertical: 5,
+    borderRadius: radii.md,
     backgroundColor: colors.surfaceSubtle,
     borderWidth: 1,
     borderColor: colors.borderSubtle,
@@ -274,36 +359,33 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primarySurface,
     borderColor: colors.primary,
   },
-  sortText: {
+  sortPillText: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     fontSize: 12,
   },
-  sortTextActive: {
+  sortPillTextActive: {
     color: colors.primary,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 
+  // Results info
   resultsInfoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: spacing.md,
+    paddingHorizontal: 2,
   },
   resultsCount: {
     ...typography.labelSmall,
     color: colors.textSecondary,
-  },
-  cpmBadge: {
-    backgroundColor: colors.primarySurface,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 2,
-    borderRadius: radii.xs,
-  },
-  cpmBadgeText: {
-    ...typography.bodySmall,
-    color: colors.primary,
     fontSize: 11,
-    fontWeight: '600',
+  },
+  resetFiltersLink: {
+    ...typography.labelSmall,
+    color: colors.primary,
+    fontWeight: '700',
+    fontSize: 11,
   },
 });

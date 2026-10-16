@@ -1,233 +1,254 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
+  ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { ScreenContainer } from '../../components/ui/ScreenContainer';
 import { SectionHeader } from '../../components/ui/SectionHeader';
+import { FeaturedCampaignCard } from '../../components/campaigns/FeaturedCampaignCard';
+import { HorizontalCampaignCard } from '../../components/campaigns/HorizontalCampaignCard';
 import { CampaignCard } from '../../components/campaigns/CampaignCard';
-import { LoadingState } from '../../components/ui/LoadingState';
-import { ErrorState } from '../../components/ui/ErrorState';
 import { Button } from '../../components/ui/Button';
+import { Avatar } from '../../components/ui/Avatar';
 import { colors, typography, spacing, radii, shadows } from '../../theme';
-import { api } from '../../services/api';
-import { Campaign, PlatformMetrics } from '../../types/campaign';
+import { useCampaignStore } from '../../services/campaignStore';
+import { DEFAULT_REACH_CONFIG, formatMetricNumber } from '../../lib/reachCalculator';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [metrics, setMetrics] = useState<PlatformMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
+  const store = useCampaignStore();
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const loadData = async () => {
-    try {
-      setError(null);
-      const [fetchedCampaigns, fetchedMetrics] = await Promise.all([
-        api.getCampaigns({ sort: 'trending' }),
-        api.getMetrics(),
-      ]);
-      setCampaigns(fetchedCampaigns);
-      setMetrics(fetchedMetrics);
-    } catch (err: any) {
-      setError(err?.message || 'Failed to load campaigns');
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-  }, []);
+  const allCampaigns = store.getAllCampaigns();
+  const featuredCampaign = store.getFeaturedCampaign();
+  const horizontalCampaigns = allCampaigns.filter(c => c.id !== featuredCampaign.id).slice(0, 5);
+  const recentCampaigns = allCampaigns.filter(c => c.id !== featuredCampaign.id).slice(2, 6);
 
   const onRefresh = () => {
     setRefreshing(true);
-    loadData();
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 600);
   };
+
+  // 1 dollar gives approximately 27 impressions at $37 CPM
+  const impressionsPerDollar = Math.round((1 / DEFAULT_REACH_CONFIG.assumedCPM) * 1000);
 
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={onRefresh} padded={true}>
-      {/* 1. Compact Brand Header */}
-      <View style={styles.brandHeader}>
-        <View style={styles.brandTitleRow}>
-          <View style={styles.logoBadge}>
-            <Ionicons name="megaphone" size={16} color={colors.accent} />
+      {/* 1. Header: Brand mark, wordmark, greeting, and profile shortcut */}
+      <View style={styles.header}>
+        <View style={styles.brandGroup}>
+          <View style={styles.brandLogoCircle}>
+            <Ionicons name="megaphone" size={17} color={colors.accent} />
           </View>
           <View>
-            <Text style={styles.brandName}>CAMPAIGNS</Text>
-            <Text style={styles.brandSub}>Amplification Platform</Text>
+            <Text style={styles.brandWordmark}>CAMPAIGNS</Text>
+            <Text style={styles.brandSub}>Message Amplification</Text>
           </View>
         </View>
-        <View style={styles.networkStatusPill}>
-          <View style={styles.activeDot} />
-          <Text style={styles.networkStatusText}>Verified Network</Text>
-        </View>
+
+        <TouchableOpacity
+          onPress={() => router.push('/(tabs)/profile')}
+          activeOpacity={0.7}
+          style={styles.profileBtn}
+          accessibilityLabel="Open profile"
+        >
+          <Avatar
+            name="Advocate"
+            size={38}
+            source="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"
+          />
+        </TouchableOpacity>
       </View>
 
       {/* 2. Editorial Hero */}
-      <View style={styles.heroCard}>
-        <View style={styles.heroAccentPill}>
-          <Text style={styles.heroAccentText}>DIRECT DISTRIBUTION</Text>
+      <View style={styles.heroSection}>
+        <View style={styles.heroPreheadingRow}>
+          <View style={styles.demoPillBadge}>
+            <Text style={styles.demoPillText}>DEMO ENVIRONMENT</Text>
+          </View>
+          <Text style={styles.heroMetaText}>Cross-Network Media Spend</Text>
         </View>
-        <Text style={styles.heroTitle}>Deliver messages beyond your feed.</Text>
-        <Text style={styles.heroBody}>
-          Direct donations often fund overhead. Campaign amplification specifically pays for
-          targeted ad distribution to put critical causes and truth in front of minds outside the echo chamber.
+
+        <Text style={styles.heroHeadline}>
+          Good messages deserve a wider audience.
+        </Text>
+        <Text style={styles.heroSupportingText}>
+          Discover campaigns that bring important ideas to more people through community-funded promotion.
+          Contributions pay for targeted advertising distribution, not operational overhead.
         </Text>
 
-        {/* Reach Benchmark Card */}
-        <View style={styles.reachBenchmarkCard}>
+        {/* Reach Illustration Box */}
+        <View style={styles.reachIllustrationCard}>
           <View style={styles.reachEquationRow}>
-            <View style={styles.dollarBox}>
-              <Text style={styles.dollarText}>$1</Text>
+            <View style={styles.budgetPill}>
+              <Text style={styles.budgetPillText}>$1.00</Text>
             </View>
             <Ionicons name="arrow-forward" size={16} color={colors.primary} />
-            <View style={styles.reachNumberBox}>
-              <Text style={styles.reachNumber}>≈ 27 People</Text>
-              <Text style={styles.reachSub}>reached outside existing networks</Text>
+            <View style={styles.reachResultBox}>
+              <Text style={styles.reachResultNumber}>
+                ≈ {impressionsPerDollar} Ad Impressions
+              </Text>
+              <Text style={styles.reachAssumptionText}>
+                Based on an illustrative demo assumption of ${DEFAULT_REACH_CONFIG.assumedCPM} CPM (~$0.037 / view).
+              </Text>
             </View>
           </View>
+          <Text style={styles.reachDisclaimer}>
+            *Actual delivery varies with advertising costs, inventory, targeting density, and creative performance. Not a guaranteed audience size.
+          </Text>
         </View>
 
-        {/* Primary Actions */}
-        <View style={styles.heroActionsRow}>
+        {/* Primary and Secondary CTAs */}
+        <View style={styles.heroCtasRow}>
           <Button
-            title="Explore Campaigns"
+            title="Explore campaigns"
             onPress={() => router.push('/(tabs)/explore')}
             variant="primary"
-            style={styles.heroButton}
+            size="md"
+            style={styles.heroCtaBtn}
             icon={<Ionicons name="compass-outline" size={18} color={colors.textInverse} />}
           />
           <Button
-            title="Start Campaign"
+            title="Start a campaign"
             onPress={() => router.push('/(tabs)/create')}
             variant="secondary"
-            style={styles.heroButton}
+            size="md"
+            style={styles.heroCtaBtn}
             icon={<Ionicons name="add-circle-outline" size={18} color={colors.textPrimary} />}
           />
         </View>
       </View>
 
-      {/* 3. How Amplification Works (3 Clear Steps) */}
-      <View style={styles.explainerCard}>
-        <Text style={styles.explainerHeader}>How Message Amplification Works</Text>
-        <View style={styles.stepsList}>
-          <View style={styles.stepItem}>
+      {/* 3. Featured Campaign Section */}
+      <View style={styles.sectionDivider} />
+      <FeaturedCampaignCard
+        campaign={featuredCampaign}
+        onPress={() => router.push(`/campaign/${featuredCampaign.id}`)}
+      />
+
+      {/* 4. Horizontally Browsable Section */}
+      <SectionHeader
+        title="Urgent Community Causes"
+        subtitle="Campaigns approaching their funding and distribution deadlines"
+        actionText="View all"
+        onActionPress={() => router.push('/(tabs)/explore')}
+      />
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.horizontalScrollContent}
+        style={styles.horizontalScrollView}
+      >
+        {horizontalCampaigns.map(camp => (
+          <HorizontalCampaignCard
+            key={camp.id}
+            campaign={camp}
+            onPress={() => router.push(`/campaign/${camp.id}`)}
+          />
+        ))}
+      </ScrollView>
+
+      {/* 5. How It Works (3 Clear Steps) */}
+      <View style={styles.howItWorksCard}>
+        <Text style={styles.howItWorksHeader}>How Amplification Works</Text>
+        <Text style={styles.howItWorksSub}>
+          Reaching a funding goal does not automatically mean advertising has launched.
+          Every campaign follows an auditable lifecycle.
+        </Text>
+
+        <View style={styles.stepsContainer}>
+          {/* Step 1 */}
+          <View style={styles.stepRow}>
             <View style={styles.stepNumberBadge}>
-              <Text style={styles.stepNumberText}>1</Text>
+              <Text style={styles.stepNumber}>1</Text>
             </View>
             <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>Fact-Checked Message</Text>
-              <Text style={styles.stepDesc}>
-                Advocates write a message, vetted against Universal Trust Standards (UUTS).
+              <Text style={styles.stepTitle}>Create</Text>
+              <Text style={styles.stepDescription}>
+                Advocates prepare a focused message, intended audience targeting, and supporting verifiable source records.
               </Text>
             </View>
           </View>
 
-          <View style={styles.stepDivider} />
+          <View style={styles.stepConnector} />
 
-          <View style={styles.stepItem}>
+          {/* Step 2 */}
+          <View style={styles.stepRow}>
             <View style={styles.stepNumberBadge}>
-              <Text style={styles.stepNumberText}>2</Text>
+              <Text style={styles.stepNumber}>2</Text>
             </View>
             <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>Community Funds Reach</Text>
-              <Text style={styles.stepDesc}>
-                Micro-pledges pool together solely to pay advertising placement costs.
+              <Text style={styles.stepTitle}>Review</Text>
+              <Text style={styles.stepDescription}>
+                The platform checks source documentation, confirms ad policy eligibility, and sets up distribution parameters.
               </Text>
             </View>
           </View>
 
-          <View style={styles.stepDivider} />
+          <View style={styles.stepConnector} />
 
-          <View style={styles.stepItem}>
+          {/* Step 3 */}
+          <View style={styles.stepRow}>
             <View style={styles.stepNumberBadge}>
-              <Text style={styles.stepNumberText}>3</Text>
+              <Text style={styles.stepNumber}>3</Text>
             </View>
             <View style={styles.stepContent}>
-              <Text style={styles.stepTitle}>Direct Cross-Network Ads</Text>
-              <Text style={styles.stepDesc}>
-                Targeted ads run across search, news feeds, and social corridors.
+              <Text style={styles.stepTitle}>Amplify</Text>
+              <Text style={styles.stepDescription}>
+                Community contributions fund cross-network ad placement to reach targeted audiences beyond existing follower feeds.
               </Text>
             </View>
           </View>
         </View>
       </View>
 
-      {/* 4. Live Platform Transparency Metrics */}
-      {metrics ? (
-        <View style={styles.metricsSummaryRow}>
-          <View style={styles.metricItem}>
-            <Text style={styles.metricValue}>
-              {metrics.totalReachFunded >= 1000000
-                ? `${(metrics.totalReachFunded / 1000000).toFixed(1)}M`
-                : `${Math.round(metrics.totalReachFunded / 1000)}k`}
-            </Text>
-            <Text style={styles.metricLabel}>Reach Funded</Text>
-          </View>
-          <View style={styles.metricDivider} />
-          <View style={styles.metricItem}>
-            <Text style={styles.metricValue}>
-              ${(metrics.totalRaised / 1000).toFixed(1)}k
-            </Text>
-            <Text style={styles.metricLabel}>Amplified</Text>
-          </View>
-          <View style={styles.metricDivider} />
-          <View style={styles.metricItem}>
-            <Text style={styles.metricValue}>{metrics.avgTrustScore}</Text>
-            <Text style={styles.metricLabel}>Avg UUTS Trust</Text>
-          </View>
-        </View>
-      ) : null}
-
-      {/* 5. Featured Campaigns Section */}
+      {/* 6. Recent Campaigns Feed */}
       <SectionHeader
-        title="Featured Campaigns"
-        subtitle="Vetted public interest campaigns actively seeking amplification"
-        actionText="View all"
+        title="Recent Public Submissions"
+        subtitle="Newly vetted messages seeking initial promotional backers"
+        actionText="Explore 10+ topics"
         onActionPress={() => router.push('/(tabs)/explore')}
       />
 
-      {loading && !refreshing ? (
-        <LoadingState message="Connecting to amplification network..." />
-      ) : error ? (
-        <ErrorState message={error} onRetry={loadData} />
-      ) : (
-        campaigns.slice(0, 3).map(campaign => (
-          <CampaignCard
-            key={campaign.id}
-            campaign={campaign}
-            onPress={() => router.push(`/campaign/${campaign.id}`)}
-          />
-        ))
-      )}
+      {recentCampaigns.map(camp => (
+        <CampaignCard
+          key={camp.id}
+          campaign={camp}
+          onPress={() => router.push(`/campaign/${camp.id}`)}
+        />
+      ))}
 
-      {/* Secondary Call to Action footer */}
-      <View style={styles.calloutCard}>
-        <Ionicons name="shield-checkmark-outline" size={24} color={colors.primary} />
-        <Text style={styles.calloutTitle}>Universal Trust Standard (UUTS)</Text>
-        <Text style={styles.calloutText}>
-          Every dollar is held until claims meet fact-checking and communications integrity thresholds.
+      {/* 7. Final Creator Invitation CTA */}
+      <View style={styles.creatorInvitationCard}>
+        <View style={styles.creatorInvitationIcon}>
+          <Ionicons name="create-outline" size={26} color={colors.primary} />
+        </View>
+        <Text style={styles.creatorInvitationTitle}>Have an important message to share?</Text>
+        <Text style={styles.creatorInvitationBody}>
+          Start an amplification campaign to put your evidence and advocacy directly in front of the audiences who need to see it.
         </Text>
-        <TouchableOpacity
-          onPress={() => router.push('/(tabs)/explore')}
-          style={styles.calloutLink}
-        >
-          <Text style={styles.calloutLinkText}>Learn more about UUTS grading →</Text>
-        </TouchableOpacity>
+        <Button
+          title="Start a Campaign"
+          onPress={() => router.push('/(tabs)/create')}
+          variant="primary"
+          size="md"
+          icon={<Ionicons name="add-circle-outline" size={18} color={colors.textInverse} />}
+        />
       </View>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
-  brandHeader: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -236,20 +257,20 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.borderSubtle,
     marginBottom: spacing.md,
   },
-  brandTitleRow: {
+  brandGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
   },
-  logoBadge: {
-    width: 32,
-    height: 32,
+  brandLogoCircle: {
+    width: 34,
+    height: 34,
     borderRadius: radii.sm,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  brandName: {
+  brandWordmark: {
     ...typography.labelLarge,
     letterSpacing: 1.5,
     color: colors.primary,
@@ -261,67 +282,61 @@ const styles = StyleSheet.create({
     fontSize: 9,
     letterSpacing: 0.5,
   },
-  networkStatusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primarySurface,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
+  profileBtn: {
     borderRadius: radii.pill,
-    gap: 6,
-  },
-  activeDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.success,
-  },
-  networkStatusText: {
-    ...typography.labelSmall,
-    color: colors.primary,
-    fontSize: 10,
-    fontWeight: '700',
   },
 
-  // Hero Card
-  heroCard: {
+  // Hero Section
+  heroSection: {
     backgroundColor: colors.surface,
-    borderRadius: radii.xl,
+    borderRadius: radii.xxl,
     padding: spacing.lg,
     borderWidth: 1,
     borderColor: colors.borderSubtle,
     marginBottom: spacing.lg,
     ...shadows.card,
   },
-  heroAccentPill: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.primarySurface,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
-    borderRadius: radii.pill,
+  heroPreheadingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: spacing.sm,
   },
-  heroAccentText: {
-    ...typography.labelSmall,
-    color: colors.primary,
-    fontWeight: '700',
+  demoPillBadge: {
+    backgroundColor: colors.accentSubtle,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
   },
-  heroTitle: {
-    ...typography.displayMedium,
+  demoPillText: {
+    ...typography.labelSmall,
+    color: colors.accentDark,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  heroMetaText: {
+    ...typography.bodySmall,
+    color: colors.textTertiary,
+    fontSize: 11,
+  },
+  heroHeadline: {
+    ...typography.displayLarge,
     color: colors.textPrimary,
+    lineHeight: 36,
     marginBottom: spacing.xs,
   },
-  heroBody: {
+  heroSupportingText: {
     ...typography.bodyMedium,
     color: colors.textSecondary,
     lineHeight: 22,
     marginBottom: spacing.md,
   },
-
-  // Reach Equation
-  reachBenchmarkCard: {
+  reachIllustrationCard: {
     backgroundColor: colors.surfaceSubtle,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     padding: spacing.md,
     borderWidth: 1,
     borderColor: colors.borderSubtle,
@@ -331,74 +346,104 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    marginBottom: spacing.xs,
   },
-  dollarBox: {
+  budgetPill: {
     backgroundColor: colors.primary,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: radii.sm,
   },
-  dollarText: {
+  budgetPillText: {
     ...typography.labelLarge,
     color: colors.textInverse,
     fontWeight: '800',
   },
-  reachNumberBox: {
+  reachResultBox: {
     flex: 1,
   },
-  reachNumber: {
+  reachResultNumber: {
     ...typography.headingSmall,
     color: colors.primary,
     fontWeight: '700',
   },
-  reachSub: {
+  reachAssumptionText: {
     ...typography.bodySmall,
     color: colors.textSecondary,
     fontSize: 11,
+    marginTop: 1,
   },
-
-  // Hero Actions
-  heroActionsRow: {
+  reachDisclaimer: {
+    ...typography.bodySmall,
+    color: colors.textTertiary,
+    fontSize: 10,
+    lineHeight: 14,
+    fontStyle: 'italic',
+  },
+  heroCtasRow: {
     flexDirection: 'row',
     gap: spacing.sm,
   },
-  heroButton: {
+  heroCtaBtn: {
     flex: 1,
   },
+  sectionDivider: {
+    height: 1,
+    backgroundColor: colors.borderSubtle,
+    marginVertical: spacing.sm,
+  },
 
-  // Explainer Card
-  explainerCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    padding: spacing.md,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
+  // Horizontal Scroll
+  horizontalScrollView: {
+    marginHorizontal: -spacing.md,
     marginBottom: spacing.lg,
   },
-  explainerHeader: {
-    ...typography.headingSmall,
+  horizontalScrollContent: {
+    paddingHorizontal: spacing.md,
+  },
+
+  // How It Works
+  howItWorksCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.xxl,
+    padding: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    marginBottom: spacing.xl,
+    ...shadows.card,
+  },
+  howItWorksHeader: {
+    ...typography.headingMedium,
     color: colors.textPrimary,
+    marginBottom: spacing.xxs,
+  },
+  howItWorksSub: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    lineHeight: 18,
     marginBottom: spacing.md,
   },
-  stepsList: {
-    gap: spacing.xs,
+  stepsContainer: {
+    paddingLeft: spacing.xs,
   },
-  stepItem: {
+  stepRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: spacing.sm,
   },
   stepNumberBadge: {
-    width: 26,
-    height: 26,
+    width: 28,
+    height: 28,
     borderRadius: radii.pill,
     backgroundColor: colors.primarySurface,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 2,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
   },
-  stepNumberText: {
-    ...typography.labelSmall,
+  stepNumber: {
+    ...typography.labelMedium,
     color: colors.primary,
     fontWeight: '700',
   },
@@ -406,83 +451,58 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   stepTitle: {
-    ...typography.labelMedium,
+    ...typography.labelLarge,
     color: colors.textPrimary,
     fontWeight: '700',
+    marginBottom: 2,
   },
-  stepDesc: {
+  stepDescription: {
     ...typography.bodySmall,
     color: colors.textSecondary,
-    marginTop: 2,
     lineHeight: 18,
   },
-  stepDivider: {
-    height: 1,
+  stepConnector: {
+    width: 2,
+    height: 16,
     backgroundColor: colors.borderSubtle,
-    marginVertical: spacing.xs,
+    marginLeft: 13,
+    marginVertical: 4,
   },
 
-  // Metrics Row
-  metricsSummaryRow: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    marginBottom: spacing.lg,
-    alignItems: 'center',
-    justifyContent: 'space-around',
-  },
-  metricItem: {
-    alignItems: 'center',
-  },
-  metricValue: {
-    ...typography.metricMedium,
-    color: colors.primary,
-  },
-  metricLabel: {
-    ...typography.bodySmall,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  metricDivider: {
-    width: 1,
-    height: 28,
-    backgroundColor: colors.borderSubtle,
-  },
-
-  // Callout Card
-  calloutCard: {
+  // Creator Invitation
+  creatorInvitationCard: {
     backgroundColor: colors.surfaceSubtle,
-    borderRadius: radii.lg,
-    padding: spacing.md,
+    borderRadius: radii.xl,
+    padding: spacing.lg,
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.borderSubtle,
     marginTop: spacing.md,
-    marginBottom: spacing.xl,
+    marginBottom: spacing.xxl,
+  },
+  creatorInvitationIcon: {
+    width: 52,
+    height: 52,
+    borderRadius: radii.pill,
+    backgroundColor: colors.surface,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
   },
-  calloutTitle: {
-    ...typography.headingSmall,
+  creatorInvitationTitle: {
+    ...typography.headingMedium,
     color: colors.textPrimary,
-    marginTop: spacing.xs,
-    marginBottom: spacing.xxs,
+    textAlign: 'center',
+    marginBottom: spacing.xs,
   },
-  calloutText: {
-    ...typography.bodySmall,
+  creatorInvitationBody: {
+    ...typography.bodyMedium,
     color: colors.textSecondary,
     textAlign: 'center',
-    lineHeight: 18,
-    marginBottom: spacing.sm,
-  },
-  calloutLink: {
-    paddingVertical: spacing.xxs,
-  },
-  calloutLinkText: {
-    ...typography.labelMedium,
-    color: colors.primary,
-    fontWeight: '600',
+    lineHeight: 20,
+    marginBottom: spacing.md,
+    maxWidth: 320,
   },
 });

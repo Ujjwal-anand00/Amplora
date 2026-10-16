@@ -2,15 +2,22 @@ import React from 'react';
 import {
   View,
   Text,
-  Image,
   TouchableOpacity,
   StyleSheet,
   ViewStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, typography, spacing, radii, shadows } from '../../theme';
+import { colors, typography, spacing, radii, shadows, touchTargets } from '../../theme';
 import { Campaign } from '../../types/campaign';
 import { ProgressBar } from '../ui/ProgressBar';
+import { CampaignImage } from '../ui/CampaignImage';
+import {
+  calculateProgressPercentage,
+  calculateEstimatedImpressions,
+  formatCurrency,
+  formatMetricNumber,
+} from '../../lib/reachCalculator';
+import { campaignStore } from '../../services/campaignStore';
 
 interface CampaignCardProps {
   campaign: Campaign;
@@ -23,22 +30,16 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
   onPress,
   style,
 }) => {
-  const percentage = Math.min(
-    Math.round((campaign.raisedAmount / (campaign.targetAmount || 1)) * 100),
-    100
-  );
+  const percentage = calculateProgressPercentage(campaign.raisedAmount, campaign.targetAmount);
+  const formattedRaised = formatCurrency(campaign.raisedAmount);
+  const formattedTarget = formatCurrency(campaign.targetAmount);
+  const estimatedImpressions = calculateEstimatedImpressions(campaign.targetAmount);
+  const isSaved = campaignStore.isCampaignSaved(campaign.id);
 
-  const formattedRaised = `$${campaign.raisedAmount.toLocaleString()}`;
-  const formattedTarget = `$${campaign.targetAmount.toLocaleString()}`;
-  const formattedReach = (campaign.estimatedReach || Math.round(campaign.targetAmount * 27)).toLocaleString();
-
-  // UUTS badge color
-  const trustColor =
-    campaign.trustScore >= 90
-      ? colors.primary
-      : campaign.trustScore >= 80
-      ? colors.success
-      : colors.warning;
+  const handleBookmarkPress = (e: any) => {
+    e?.stopPropagation?.();
+    campaignStore.toggleBookmark(campaign.id);
+  };
 
   return (
     <TouchableOpacity
@@ -46,45 +47,67 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
       onPress={onPress}
       style={[styles.card, style]}
       accessibilityRole="button"
-      accessibilityLabel={`Campaign: ${campaign.title}`}
+      accessibilityLabel={`View campaign: ${campaign.title}`}
     >
-      {/* Campaign Photography */}
-      <View style={styles.imageContainer}>
-        <Image source={{ uri: campaign.imageUrl }} style={styles.image} />
-        
+      {/* 1. Cover Image with resilient fallback */}
+      <View style={styles.imageWrapper}>
+        <CampaignImage
+          source={campaign.coverImage}
+          category={campaign.category}
+          style={styles.image}
+          borderRadius={0}
+        />
+
         {/* Category Pill */}
         <View style={styles.categoryBadge}>
           <Text style={styles.categoryText}>{campaign.category}</Text>
         </View>
 
-        {/* UUTS Trust Score Badge */}
-        <View style={styles.trustBadge}>
-          <Ionicons name="shield-checkmark" size={13} color={trustColor} style={styles.shieldIcon} />
-          <Text style={[styles.trustText, { color: trustColor }]}>
-            {campaign.trustScore} UUTS
-          </Text>
-        </View>
+        {/* Bookmark Action */}
+        <TouchableOpacity
+          onPress={handleBookmarkPress}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={styles.bookmarkBtn}
+          accessibilityLabel={isSaved ? 'Remove from saved' : 'Save campaign'}
+        >
+          <Ionicons
+            name={isSaved ? 'bookmark' : 'bookmark-outline'}
+            size={18}
+            color={isSaved ? colors.primary : colors.textPrimary}
+          />
+        </TouchableOpacity>
       </View>
 
-      {/* Content Body */}
+      {/* 2. Content Body */}
       <View style={styles.body}>
+        {/* Creator Info */}
+        <View style={styles.creatorRow}>
+          <Text style={styles.creatorName} numberOfLines={1}>
+            By {campaign.creator.name}
+          </Text>
+          <Text style={styles.creatorType}>• {campaign.creator.type}</Text>
+        </View>
+
+        {/* Title */}
         <Text style={styles.title} numberOfLines={2}>
           {campaign.title}
         </Text>
-        <Text style={styles.tagLine} numberOfLines={2}>
-          {campaign.tagLine}
+
+        {/* Editorial Summary */}
+        <Text style={styles.summary} numberOfLines={2}>
+          {campaign.summary}
         </Text>
 
-        {/* Reach Equation Pill */}
+        {/* Estimated Reach Pill */}
         <View style={styles.reachPill}>
           <Ionicons name="megaphone-outline" size={14} color={colors.primary} />
           <Text style={styles.reachText}>
-            ≈ {formattedReach} people reached outside echo chamber
+            ≈ {formatMetricNumber(estimatedImpressions)} estimated ad impressions at goal
           </Text>
         </View>
 
-        {/* Progress Section */}
-        <View style={styles.progressSection}>
+        {/* Progress Bar & Funding Numbers */}
+        <View style={styles.progressContainer}>
           <ProgressBar
             progress={percentage}
             height={6}
@@ -94,23 +117,30 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
           <View style={styles.metricsRow}>
             <Text style={styles.raisedAmount}>
               {formattedRaised}{' '}
-              <Text style={styles.targetAmount}>of {formattedTarget}</Text>
+              <Text style={styles.targetAmount}>of {formattedTarget} goal</Text>
             </Text>
             <Text style={styles.percentageText}>{percentage}%</Text>
           </View>
         </View>
 
-        {/* Card Footer: Backers & Days Left */}
+        {/* Footer Meta: Backers & Days Left + View Button */}
         <View style={styles.footerRow}>
-          <View style={styles.footerItem}>
-            <Ionicons name="people-outline" size={14} color={colors.textSecondary} />
-            <Text style={styles.footerText}>{campaign.backerCount} backers</Text>
+          <View style={styles.metaGroup}>
+            <View style={styles.metaItem}>
+              <Ionicons name="people-outline" size={13} color={colors.textSecondary} />
+              <Text style={styles.metaText}>{campaign.backerCount} backers</Text>
+            </View>
+            <View style={styles.metaItem}>
+              <Ionicons name="time-outline" size={13} color={colors.textSecondary} />
+              <Text style={styles.metaText}>
+                {campaign.daysLeft > 0 ? `${campaign.daysLeft}d left` : 'Fully Amplified'}
+              </Text>
+            </View>
           </View>
-          <View style={styles.footerItem}>
-            <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
-            <Text style={styles.footerText}>
-              {campaign.daysLeft > 0 ? `${campaign.daysLeft} days left` : 'Fully Amplified'}
-            </Text>
+
+          <View style={styles.actionPrompt}>
+            <Text style={styles.actionPromptText}>View campaign</Text>
+            <Ionicons name="arrow-forward" size={13} color={colors.primary} />
           </View>
         </View>
       </View>
@@ -121,91 +151,104 @@ export const CampaignCard: React.FC<CampaignCardProps> = ({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
-    borderRadius: radii.lg,
+    borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.borderSubtle,
     overflow: 'hidden',
     marginBottom: spacing.md,
     ...shadows.card,
   },
-  imageContainer: {
+  imageWrapper: {
+    height: 180,
+    width: '100%',
     position: 'relative',
-    height: 170,
     backgroundColor: colors.surfaceSubtle,
   },
   image: {
     width: '100%',
     height: '100%',
-    resizeMode: 'cover',
   },
   categoryBadge: {
     position: 'absolute',
     top: spacing.sm,
     left: spacing.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.94)',
+    backgroundColor: 'rgba(255, 255, 255, 0.95)',
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
+    paddingVertical: 3,
     borderRadius: radii.pill,
     borderWidth: 1,
     borderColor: colors.borderSubtle,
   },
   categoryText: {
     ...typography.labelSmall,
-    color: colors.textPrimary,
+    color: colors.primary,
     fontWeight: '700',
+    fontSize: 10,
   },
-  trustBadge: {
+  bookmarkBtn: {
     position: 'absolute',
     top: spacing.sm,
     right: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xxs,
+    width: 34,
+    height: 34,
     borderRadius: radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.borderSubtle,
   },
-  shieldIcon: {
-    marginRight: 4,
-  },
-  trustText: {
-    ...typography.labelSmall,
-    fontWeight: '700',
-  },
   body: {
     padding: spacing.md,
+  },
+  creatorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginBottom: 4,
+  },
+  creatorName: {
+    ...typography.labelSmall,
+    color: colors.textSecondary,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  creatorType: {
+    ...typography.bodySmall,
+    color: colors.textTertiary,
+    fontSize: 11,
   },
   title: {
     ...typography.headingMedium,
     color: colors.textPrimary,
     marginBottom: spacing.xxs,
+    lineHeight: 22,
   },
-  tagLine: {
+  summary: {
     ...typography.bodyMedium,
     color: colors.textSecondary,
-    marginBottom: spacing.sm,
     lineHeight: 20,
+    marginBottom: spacing.sm,
   },
   reachPill: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.primarySurface,
     paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    paddingVertical: 4,
     borderRadius: radii.sm,
-    marginBottom: spacing.md,
+    marginBottom: spacing.sm,
     gap: 6,
   },
   reachText: {
     ...typography.bodySmall,
     color: colors.primary,
     fontWeight: '600',
+    fontSize: 11,
     flex: 1,
   },
-  progressSection: {
-    marginBottom: spacing.sm,
+  progressContainer: {
+    marginBottom: spacing.xs,
   },
   metricsRow: {
     flexDirection: 'row',
@@ -234,14 +277,31 @@ const styles = StyleSheet.create({
     paddingTop: spacing.xs,
     borderTopWidth: 1,
     borderTopColor: colors.borderSubtle,
+    marginTop: spacing.xxs,
   },
-  footerItem: {
+  metaGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  footerText: {
+  metaText: {
     ...typography.bodySmall,
     color: colors.textSecondary,
+    fontSize: 12,
+  },
+  actionPrompt: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  actionPromptText: {
+    ...typography.labelSmall,
+    color: colors.primary,
+    fontWeight: '700',
   },
 });

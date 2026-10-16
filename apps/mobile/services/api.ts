@@ -37,7 +37,7 @@ export class CampaignApiClient {
       }
       if (params?.search) {
         const q = params.search.toLowerCase();
-        items = items.filter(c => c.title.toLowerCase().includes(q) || c.narrative.toLowerCase().includes(q));
+        items = items.filter(c => c.title.toLowerCase().includes(q) || c.summary.toLowerCase().includes(q));
       }
       return items;
     }

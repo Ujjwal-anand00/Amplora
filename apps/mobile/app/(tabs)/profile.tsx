@@ -11,6 +11,10 @@ import { ScreenContainer } from '../../components/ui/ScreenContainer';
 import { Avatar } from '../../components/ui/Avatar';
 import { colors, typography, spacing, radii, shadows } from '../../theme';
 
+import { useRouter } from 'expo-router';
+import { useCampaignStore } from '../../services/campaignStore';
+import { formatCurrency } from '../../lib/reachCalculator';
+
 interface SettingsRowProps {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
@@ -48,6 +52,13 @@ const SettingsRow: React.FC<SettingsRowProps> = ({
 );
 
 export default function ProfileScreen() {
+  const router = useRouter();
+  const store = useCampaignStore();
+
+  const savedIds = store.getSavedCampaignIds();
+  const allCampaigns = store.getAllCampaigns();
+  const savedCampaigns = allCampaigns.filter(c => savedIds.includes(c.id));
+
   const handleFeatureAlert = (title: string, info: string) => {
     Alert.alert(title, info, [{ text: 'OK' }]);
   };
@@ -96,6 +107,46 @@ export default function ProfileScreen() {
             <Text style={styles.impactLabel}>Campaigns</Text>
           </View>
         </View>
+      </View>
+
+      {/* Saved Campaigns Section */}
+      <View style={styles.section}>
+        <View style={styles.savedSectionHeader}>
+          <Text style={styles.sectionTitle}>Saved Campaigns ({savedCampaigns.length})</Text>
+          <TouchableOpacity onPress={() => router.push('/(tabs)/explore')}>
+            <Text style={styles.exploreLink}>Browse more</Text>
+          </TouchableOpacity>
+        </View>
+
+        {savedCampaigns.length > 0 ? (
+          <View style={styles.savedCardsContainer}>
+            {savedCampaigns.map(camp => (
+              <TouchableOpacity
+                key={camp.id}
+                onPress={() => router.push(`/campaign/${camp.id}`)}
+                style={styles.savedCampaignRow}
+                activeOpacity={0.7}
+              >
+                <View style={styles.savedIconCircle}>
+                  <Ionicons name="bookmark" size={16} color={colors.primary} />
+                </View>
+                <View style={styles.savedInfo}>
+                  <Text style={styles.savedTitle} numberOfLines={1}>
+                    {camp.title}
+                  </Text>
+                  <Text style={styles.savedMeta}>
+                    {camp.category} • {formatCurrency(camp.raisedAmount)} of {formatCurrency(camp.targetAmount)}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : (
+          <View style={styles.emptySavedBox}>
+            <Text style={styles.emptySavedText}>No saved campaigns yet. Bookmark campaigns while exploring to keep track of their progress.</Text>
+          </View>
+        )}
       </View>
 
       {/* Account Settings Section */}
@@ -335,6 +386,72 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: colors.borderSubtle,
     marginLeft: 56,
+  },
+  // Saved Campaigns
+  savedSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: spacing.xs,
+    paddingHorizontal: spacing.xs,
+  },
+  exploreLink: {
+    ...typography.labelSmall,
+    color: colors.primary,
+    fontWeight: '700',
+    fontSize: 11,
+  },
+  savedCardsContainer: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    overflow: 'hidden',
+  },
+  savedCampaignRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderSubtle,
+    minHeight: 52,
+  },
+  savedIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.pill,
+    backgroundColor: colors.primarySurface,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+  },
+  savedInfo: {
+    flex: 1,
+    paddingRight: spacing.xs,
+  },
+  savedTitle: {
+    ...typography.labelMedium,
+    color: colors.textPrimary,
+    fontWeight: '600',
+  },
+  savedMeta: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  emptySavedBox: {
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+  },
+  emptySavedText: {
+    ...typography.bodySmall,
+    color: colors.textTertiary,
+    lineHeight: 18,
   },
 
   // Manifesto Footer
