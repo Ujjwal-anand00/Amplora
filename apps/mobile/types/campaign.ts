@@ -111,15 +111,4 @@ export interface PlatformMetrics {
   cpmBenchmark: number;
 }
 
-export interface CampaignDraft {
-  id: string;
-  title: string;
-  tagLine: string;
-  narrative: string;
-  category: string;
-  targetAmount: number;
-  targetAudience: string;
-  adChannels: string[];
-  savedAt: string;
-  mode: 'manual' | 'voice';
-}
+export * from './draft';

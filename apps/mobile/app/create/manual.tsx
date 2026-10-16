@@ -1,320 +1,266 @@
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-} from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { useForm, Controller } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { colors, typography, spacing, radii, touchTargets } from '../../theme';
-import { Button } from '../../components/ui/Button';
+import { draftStore, useDraftStore } from '../../services/draftStore';
+import { CampaignDraft, DraftStep } from '../../types/draft';
+import { CreationStepLayout } from '../../components/create/CreationStepLayout';
+import { Step1Basics } from '../../components/create/Step1Basics';
+import { Step2Story } from '../../components/create/Step2Story';
+import { Step3Visuals } from '../../components/create/Step3Visuals';
+import { Step4Reach } from '../../components/create/Step4Reach';
+import { Step5Submit } from '../../components/create/Step5Submit';
+import { SubmissionSuccessModal } from '../../components/create/SubmissionSuccessModal';
+import { colors } from '../../theme';
 
-const CATEGORIES = [
-  'Civic',
-  'Environment',
-  'Health',
-  'Consumer',
-  'Economic Policy',
-  'Education',
-  'Community',
-];
-
-const AVAILABLE_CHANNELS = [
-  'Meta Targeted Display',
-  'Google Search Ads',
-  'Local News Outlets',
-  'YouTube Pre-Roll',
-  'Geo-Fenced Mobile',
-];
-
-const formSchema = z.object({
-  title: z.string().min(5, 'Title must be at least 5 characters'),
-  tagLine: z.string().min(10, 'Tagline must be at least 10 characters'),
-  category: z.string().min(1, 'Category is required'),
-  targetBudget: z.string().min(1, 'Target budget is required'),
-  targetAudience: z.string().min(8, 'Please describe who must see this message'),
-  narrative: z.string().min(25, 'Please provide the campaign narrative & evidence'),
-});
-
-type FormValues = z.infer<typeof formSchema>;
-
-export default function ManualCreateScreen() {
+export default function ManualCreationScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ draftId?: string; title?: string }>();
+  const params = useLocalSearchParams<{ draftId?: string; mode?: 'manual' | 'voice' }>();
+  const store = useDraftStore();
 
-  const [selectedChannels, setSelectedChannels] = useState<string[]>([
-    'Meta Targeted Display',
-    'Google Search Ads',
-  ]);
+  const [draft, setDraft] = useState<CampaignDraft>(() =>
+    store.startOrResumeDraft(params.draftId, params.mode || 'manual')
+  );
+  const [currentStep, setCurrentStep] = useState<DraftStep>(draft.currentStep || 1);
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  const {
-    control,
-    handleSubmit,
-    watch,
-    formState: { errors },
-  } = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
-    defaultValues: {
-      title: params.title || '',
-      tagLine: '',
-      category: 'Civic',
-      targetBudget: '5000',
-      targetAudience: '',
-      narrative: '',
-    },
-  });
+  // Sync draft from store if active draft changes externally
+  useEffect(() => {
+    const active = store.getActiveDraft();
+    if (active && active.id === draft.id) {
+      setDraft(active);
+    }
+  }, [store]);
 
-  const budgetValue = parseFloat(watch('targetBudget') || '0') || 0;
-  const projectedReach = Math.round(budgetValue * 27.0);
+  const autosaveStatus = store.getAutosaveStatus();
 
-  const toggleChannel = (channel: string) => {
-    if (selectedChannels.includes(channel)) {
-      if (selectedChannels.length > 1) {
-        setSelectedChannels(selectedChannels.filter(c => c !== channel));
-      }
-    } else {
-      setSelectedChannels([...selectedChannels, channel]);
+  // Field change handler with autosave
+  const handleDraftChange = (fields: Partial<CampaignDraft>) => {
+    const updated = { ...draft, ...fields };
+    setDraft(updated);
+    store.updateActiveDraft(fields);
+
+    // Clear related errors
+    if (errors && Object.keys(errors).length > 0) {
+      const nextErrors = { ...errors };
+      Object.keys(fields).forEach(k => delete nextErrors[k]);
+      setErrors(nextErrors);
     }
   };
 
-  const onSubmit = async (data: FormValues) => {
+  // Step Validation
+  const validateStep = (step: DraftStep): boolean => {
+    const stepErrors: Record<string, string> = {};
+
+    if (step === 1) {
+      if (!draft.title || draft.title.trim().length < 5) {
+        stepErrors.title = 'Title must be at least 5 characters.';
+      }
+      if (!draft.creatorName || draft.creatorName.trim().length < 2) {
+        stepErrors.creatorName = 'Creator or organization name is required.';
+      }
+      if (!draft.category) {
+        stepErrors.category = 'Please select a campaign category.';
+      }
+      if (!draft.summary || draft.summary.trim().length < 10) {
+        stepErrors.summary = 'Summary must be at least 10 characters.';
+      }
+    } else if (step === 2) {
+      if (!draft.storyIntro || draft.storyIntro.trim().length < 15) {
+        stepErrors.storyIntro = 'Please provide an introduction paragraph of at least 15 characters.';
+      }
+      if (!draft.storyHeadline && !draft.title) {
+        stepErrors.storyHeadline = 'Article headline is required.';
+      }
+    } else if (step === 3) {
+      if (!draft.adHeadline && !draft.title) {
+        stepErrors.adHeadline = 'Advertising headline is required.';
+      }
+      if (!draft.adDescription && !draft.summary) {
+        stepErrors.adDescription = 'Advertising description is required.';
+      }
+    } else if (step === 4) {
+      if (!draft.targetLocations || draft.targetLocations.length === 0) {
+        stepErrors.targetLocations = 'Please select at least one target location.';
+      }
+      if (!draft.distributionChannels || draft.distributionChannels.length === 0) {
+        stepErrors.distributionChannels = 'Please select at least one distribution channel.';
+      }
+    } else if (step === 5) {
+      if (!draft.fundingGoal || draft.fundingGoal < 500) {
+        stepErrors.fundingGoal = 'Please enter a valid funding goal of at least $500.';
+      }
+      if (!draft.policyAcknowledged) {
+        stepErrors.policy = 'You must confirm and certify the UUTS submission policy.';
+      }
+    }
+
+    setErrors(stepErrors);
+    return Object.keys(stepErrors).length === 0;
+  };
+
+  // Continue to Next Step
+  const handleContinue = () => {
+    if (!validateStep(currentStep)) {
+      Alert.alert(
+        'Required Fields',
+        'Please complete all required fields on this step before continuing.'
+      );
+      return;
+    }
+
+    if (currentStep < 5) {
+      const nextStep = (currentStep + 1) as DraftStep;
+      setCurrentStep(nextStep);
+      handleDraftChange({ currentStep: nextStep });
+      store.saveImmediately();
+    } else {
+      // Step 5: Submit for review
+      handleSubmitForReview();
+    }
+  };
+
+  // Back Navigation
+  const handleBack = () => {
+    if (currentStep > 1) {
+      const prevStep = (currentStep - 1) as DraftStep;
+      setCurrentStep(prevStep);
+      handleDraftChange({ currentStep: prevStep });
+      store.saveImmediately();
+    } else {
+      store.saveImmediately().then(() => {
+        router.back();
+      });
+    }
+  };
+
+  // Jump to specific step (from progress indicator or edit links)
+  const handleSelectStep = (targetStep: DraftStep) => {
+    // Only allow jumping backward or to current step without validation
+    if (targetStep <= currentStep) {
+      setCurrentStep(targetStep);
+      handleDraftChange({ currentStep: targetStep });
+      store.saveImmediately();
+    } else {
+      // If jumping forward, validate current step
+      if (validateStep(currentStep)) {
+        setCurrentStep(targetStep);
+        handleDraftChange({ currentStep: targetStep });
+        store.saveImmediately();
+      }
+    }
+  };
+
+  // Submit Draft
+  const handleSubmitForReview = async () => {
+    if (!validateStep(5)) {
+      Alert.alert('Incomplete Submission', 'Please review and certify the required checklist.');
+      return;
+    }
+
+    if (submitting) return; // Prevent duplicate taps
     setSubmitting(true);
+
     try {
-      // Simulate submission & validation pipeline
-      setTimeout(() => {
-        setSubmitting(false);
-        Alert.alert(
-          'Campaign Submitted for UUTS Review',
-          `"${data.title}" has been created and submitted to fact-checkers. Once certified, community backers can begin pooling ad funds.`,
-          [
-            {
-              text: 'View Explore Feed',
-              onPress: () => router.push('/(tabs)/explore'),
-            },
-          ]
-        );
-      }, 900);
-    } catch {
+      const submitted = await store.submitDraftForReview(draft.id);
+      if (submitted) {
+        setDraft(submitted);
+        setShowSuccessModal(true);
+      } else {
+        Alert.alert('Error', 'Unable to submit campaign draft. Please try again.');
+      }
+    } catch (err) {
+      console.warn('[Submit] error:', err);
+      Alert.alert('Submission Error', 'An unexpected error occurred during submission.');
+    } finally {
       setSubmitting(false);
-      Alert.alert('Error', 'Unable to create campaign at this moment.');
+    }
+  };
+
+  // Step Titles
+  const getStepTitle = () => {
+    switch (currentStep) {
+      case 1:
+        return 'Basics & Narrative Intent';
+      case 2:
+        return 'The Story & Verifiable Evidence';
+      case 3:
+        return 'Campaign & Advertising Visuals';
+      case 4:
+        return 'Target Audience & Candidate Channels';
+      case 5:
+        return 'Review, Funding Goal & Certification';
+    }
+  };
+
+  const getStepSubtitle = () => {
+    switch (currentStep) {
+      case 1:
+        return 'Define title, advocacy category, message summary, and creator identity.';
+      case 2:
+        return 'Structure your investigative article with ordered sections, primary sources, and stats.';
+      case 3:
+        return 'Configure advertising headline, creative assets, and inspect dual placement previews.';
+      case 4:
+        return 'Plan geographic boundaries, audience themes, duration, and projected impressions.';
+      case 5:
+        return 'Set your target funding goal, review pre-flight checklist, and submit for fact-checking.';
     }
   };
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerTitle: 'Create Campaign',
-          headerTitleStyle: { ...typography.headingSmall, color: colors.textPrimary },
-          headerStyle: { backgroundColor: colors.surface },
-          headerTintColor: colors.primary,
-          headerShadowVisible: false,
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
       <View style={styles.container}>
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-          {/* Header */}
-          <View style={styles.headerBox}>
-            <Text style={styles.headerTitle}>Amplification Parameters</Text>
-            <Text style={styles.headerSubtitle}>
-              Target the audiences who need to hear this message most.
-            </Text>
-          </View>
-
-          {/* Title Field */}
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>Campaign Headline *</Text>
-            <Controller
-              control={control}
-              name="title"
-              render={({ field: { onChange, value } }) => (
-                <TextInput
-                  value={value}
-                  onChangeText={onChange}
-                  placeholder="e.g. Expose Hospital Facility Surcharges"
-                  placeholderTextColor={colors.textTertiary}
-                  style={[styles.input, errors.title && styles.inputError]}
-                />
-              )}
+        <CreationStepLayout
+          currentStep={currentStep}
+          title={getStepTitle()}
+          subtitle={getStepSubtitle()}
+          autosaveStatus={autosaveStatus}
+          onContinue={handleContinue}
+          onBack={handleBack}
+          onSaveDraft={() => store.saveImmediately()}
+          onSelectStep={handleSelectStep}
+          continueLoading={submitting}
+        >
+          {currentStep === 1 && (
+            <Step1Basics draft={draft} onChange={handleDraftChange} errors={errors} />
+          )}
+          {currentStep === 2 && (
+            <Step2Story draft={draft} onChange={handleDraftChange} errors={errors} />
+          )}
+          {currentStep === 3 && (
+            <Step3Visuals draft={draft} onChange={handleDraftChange} errors={errors} />
+          )}
+          {currentStep === 4 && (
+            <Step4Reach draft={draft} onChange={handleDraftChange} errors={errors} />
+          )}
+          {currentStep === 5 && (
+            <Step5Submit
+              draft={draft}
+              onChange={handleDraftChange}
+              onNavigateToStep={handleSelectStep}
+              onSubmitForReview={handleSubmitForReview}
+              submitting={submitting}
+              errors={errors}
             />
-            {errors.title && <Text style={styles.errorText}>{errors.title.message}</Text>}
-          </View>
+          )}
+        </CreationStepLayout>
 
-          {/* Tagline */}
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>One-Sentence Tagline *</Text>
-            <Controller
-              control={control}
-              name="tagLine"
-              render={({ field: { onChange, value } }) => (
-                <TextInput
-                  value={value}
-                  onChangeText={onChange}
-                  placeholder="Summarize the message that will appear in advertisements"
-                  placeholderTextColor={colors.textTertiary}
-                  style={[styles.input, errors.tagLine && styles.inputError]}
-                />
-              )}
-            />
-            {errors.tagLine && <Text style={styles.errorText}>{errors.tagLine.message}</Text>}
-          </View>
-
-          {/* Category Selector */}
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>Advocacy Category *</Text>
-            <Controller
-              control={control}
-              name="category"
-              render={({ field: { onChange, value } }) => (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipsScroll}>
-                  {CATEGORIES.map(cat => {
-                    const active = value === cat;
-                    return (
-                      <TouchableOpacity
-                        key={cat}
-                        onPress={() => onChange(cat)}
-                        style={[styles.categoryChip, active && styles.categoryChipActive]}
-                      >
-                        <Text style={[styles.categoryChipText, active && styles.categoryChipTextActive]}>
-                          {cat}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              )}
-            />
-          </View>
-
-          {/* Target Ad Budget & Live Reach Calculator */}
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>Amplification Ad Budget Target ($) *</Text>
-            <Controller
-              control={control}
-              name="targetBudget"
-              render={({ field: { onChange, value } }) => (
-                <View style={styles.budgetRow}>
-                  <Text style={styles.budgetPrefix}>$</Text>
-                  <TextInput
-                    value={value}
-                    onChangeText={val => onChange(val.replace(/[^0-9]/g, ''))}
-                    placeholder="5000"
-                    keyboardType="numeric"
-                    placeholderTextColor={colors.textTertiary}
-                    style={[styles.budgetInput, errors.targetBudget && styles.inputError]}
-                  />
-                </View>
-              )}
-            />
-            {errors.targetBudget && (
-              <Text style={styles.errorText}>{errors.targetBudget.message}</Text>
-            )}
-
-            {/* Reach Formula Live Card */}
-            <View style={styles.reachFormulaCard}>
-              <Ionicons name="calculator-outline" size={20} color={colors.primary} />
-              <View style={styles.reachFormulaTextContainer}>
-                <Text style={styles.reachFormulaTitle}>
-                  ≈ {projectedReach.toLocaleString()} Projected Targeted Viewers
-                </Text>
-                <Text style={styles.reachFormulaSub}>
-                  Calculated based on platform benchmark of 27 verified impressions per $1 ad spend.
-                </Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Target Audience */}
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>Target Audience Description *</Text>
-            <Controller
-              control={control}
-              name="targetAudience"
-              render={({ field: { onChange, value } }) => (
-                <TextInput
-                  value={value}
-                  onChangeText={onChange}
-                  placeholder="e.g. Registered voters aged 25-54 residing in coastal river districts"
-                  placeholderTextColor={colors.textTertiary}
-                  style={[styles.input, errors.targetAudience && styles.inputError]}
-                />
-              )}
-            />
-            {errors.targetAudience && (
-              <Text style={styles.errorText}>{errors.targetAudience.message}</Text>
-            )}
-          </View>
-
-          {/* Distribution Channels Multi-Select */}
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>Distribution Ad Channels *</Text>
-            <View style={styles.channelsList}>
-              {AVAILABLE_CHANNELS.map(ch => {
-                const isSelected = selectedChannels.includes(ch);
-                return (
-                  <TouchableOpacity
-                    key={ch}
-                    onPress={() => toggleChannel(ch)}
-                    style={[styles.channelItem, isSelected && styles.channelItemActive]}
-                  >
-                    <Ionicons
-                      name={isSelected ? 'checkbox' : 'square-outline'}
-                      size={20}
-                      color={isSelected ? colors.primary : colors.textTertiary}
-                    />
-                    <Text style={[styles.channelName, isSelected && styles.channelNameActive]}>
-                      {ch}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
-
-          {/* Narrative & Fact-Check Documentation */}
-          <View style={styles.formGroup}>
-            <Text style={styles.fieldLabel}>Narrative & Primary Sources *</Text>
-            <Controller
-              control={control}
-              name="narrative"
-              render={({ field: { onChange, value } }) => (
-                <TextInput
-                  value={value}
-                  onChangeText={onChange}
-                  placeholder="Provide background, factual context, and public document references for the UUTS fact-checkers."
-                  placeholderTextColor={colors.textTertiary}
-                  multiline
-                  numberOfLines={4}
-                  style={[styles.textArea, errors.narrative && styles.inputError]}
-                />
-              )}
-            />
-            {errors.narrative && (
-              <Text style={styles.errorText}>{errors.narrative.message}</Text>
-            )}
-          </View>
-
-          {/* Submit Action */}
-          <View style={styles.submitContainer}>
-            <Button
-              title="Submit Campaign for UUTS Review"
-              onPress={handleSubmit(onSubmit)}
-              loading={submitting}
-              variant="primary"
-              size="lg"
-              fullWidth
-            />
-          </View>
-        </ScrollView>
+        {/* Submission Success & Timeline Modal */}
+        <SubmissionSuccessModal
+          visible={showSuccessModal}
+          draft={draft}
+          onDone={() => {
+            setShowSuccessModal(false);
+            router.push('/(tabs)/create');
+          }}
+          onExplore={() => {
+            setShowSuccessModal(false);
+            router.push('/(tabs)/explore');
+          }}
+        />
       </View>
     </>
   );
@@ -324,157 +270,5 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: spacing.md,
-    paddingBottom: spacing.massive,
-  },
-  headerBox: {
-    marginBottom: spacing.lg,
-  },
-  headerTitle: {
-    ...typography.headingLarge,
-    color: colors.textPrimary,
-  },
-  headerSubtitle: {
-    ...typography.bodyMedium,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  formGroup: {
-    marginBottom: spacing.lg,
-  },
-  fieldLabel: {
-    ...typography.labelMedium,
-    color: colors.textPrimary,
-    marginBottom: spacing.xs,
-  },
-  input: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    ...typography.bodyMedium,
-    color: colors.textPrimary,
-    minHeight: touchTargets.minTouchTarget,
-  },
-  inputError: {
-    borderColor: colors.error,
-  },
-  errorText: {
-    ...typography.bodySmall,
-    color: colors.error,
-    marginTop: 4,
-  },
-  chipsScroll: {
-    flexDirection: 'row',
-  },
-  categoryChip: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radii.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    marginRight: spacing.xs,
-  },
-  categoryChipActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  categoryChipText: {
-    ...typography.labelMedium,
-    color: colors.textSecondary,
-  },
-  categoryChipTextActive: {
-    color: colors.textInverse,
-    fontWeight: '700',
-  },
-  budgetRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-  },
-  budgetPrefix: {
-    ...typography.headingMedium,
-    color: colors.primary,
-    marginRight: spacing.xs,
-  },
-  budgetInput: {
-    flex: 1,
-    ...typography.headingMedium,
-    color: colors.textPrimary,
-    paddingVertical: spacing.xs,
-  },
-  reachFormulaCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primarySurface,
-    padding: spacing.md,
-    borderRadius: radii.md,
-    marginTop: spacing.xs,
-    gap: spacing.sm,
-  },
-  reachFormulaTextContainer: {
-    flex: 1,
-  },
-  reachFormulaTitle: {
-    ...typography.headingSmall,
-    color: colors.primary,
-  },
-  reachFormulaSub: {
-    ...typography.bodySmall,
-    color: colors.primaryLight,
-    marginTop: 2,
-    lineHeight: 16,
-  },
-  channelsList: {
-    gap: spacing.xs,
-  },
-  channelItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    padding: spacing.sm,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    gap: spacing.sm,
-  },
-  channelItemActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.surface,
-  },
-  channelName: {
-    ...typography.bodyMedium,
-    color: colors.textSecondary,
-  },
-  channelNameActive: {
-    color: colors.textPrimary,
-    fontWeight: '600',
-  },
-  textArea: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.borderSubtle,
-    borderRadius: radii.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    ...typography.bodyMedium,
-    color: colors.textPrimary,
-    minHeight: 100,
-    textAlignVertical: 'top',
-  },
-  submitContainer: {
-    marginTop: spacing.md,
   },
 });

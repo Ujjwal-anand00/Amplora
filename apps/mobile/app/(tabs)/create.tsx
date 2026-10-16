@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,167 +13,252 @@ import { ScreenContainer } from '../../components/ui/ScreenContainer';
 import { SectionHeader } from '../../components/ui/SectionHeader';
 import { Button } from '../../components/ui/Button';
 import { colors, typography, spacing, radii, shadows } from '../../theme';
-import { SAMPLE_DRAFTS } from '../../services/mockData';
-import { CampaignDraft } from '../../types/campaign';
+import { useDraftStore } from '../../services/draftStore';
+import { CampaignDraft } from '../../types/draft';
+import { VoiceAssistedModal } from '../../components/create/VoiceAssistedModal';
 
 export default function CreateScreen() {
   const router = useRouter();
-  const [drafts, setDrafts] = useState<CampaignDraft[]>(SAMPLE_DRAFTS);
-  const [isRecording, setIsRecording] = useState(false);
+  const store = useDraftStore();
+  const allDrafts = store.getDrafts();
 
-  const handleVoiceOption = () => {
-    setIsRecording(true);
-    setTimeout(() => {
-      setIsRecording(false);
-      Alert.alert(
-        'Voice Memo Recorded',
-        'Your voice outline has been converted into draft structure: "Clean Water Accountability". Continuing in manual editor.',
-        [
-          {
-            text: 'Open Draft',
-            onPress: () => router.push('/create/manual'),
-          },
-          { text: 'Cancel', style: 'cancel' },
-        ]
-      );
-    }, 1200);
+  const [showVoiceModal, setShowVoiceModal] = useState(false);
+
+  // Separate active drafts from submitted campaigns
+  const activeDrafts = allDrafts.filter(d => d.status === 'draft');
+  const submittedCampaigns = allDrafts.filter(d => d.status === 'submitted_for_review');
+
+  const handleCreateManually = () => {
+    const newDraft = store.startOrResumeDraft(undefined, 'manual');
+    router.push({
+      pathname: '/create/manual',
+      params: { draftId: newDraft.id },
+    });
   };
 
   const handleResumeDraft = (draft: CampaignDraft) => {
+    store.startOrResumeDraft(draft.id);
     router.push({
       pathname: '/create/manual',
-      params: { draftId: draft.id, title: draft.title },
+      params: { draftId: draft.id },
     });
+  };
+
+  const handleDeleteDraft = (draft: CampaignDraft) => {
+    Alert.alert(
+      'Delete Draft',
+      `Are you sure you want to permanently delete "${draft.title || 'Untitled Draft'}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            await store.deleteDraft(draft.id);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleVoiceDraftCreated = (draft: CampaignDraft) => {
+    router.push({
+      pathname: '/create/manual',
+      params: { draftId: draft.id, mode: 'voice' },
+    });
+  };
+
+  const formatDraftDate = (isoString?: string) => {
+    if (!isoString) return 'Recently';
+    try {
+      const date = new Date(isoString);
+      return date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      });
+    } catch {
+      return 'Recently';
+    }
   };
 
   return (
     <ScreenContainer padded={true}>
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.title}>Start an Amplification Campaign</Text>
-        <Text style={styles.subtitle}>
-          Mobilize community funds to place fact-checked messages directly in front of targeted audiences.
-        </Text>
-      </View>
-
-      {/* Creation Mode Options */}
-      <View style={styles.optionsContainer}>
-        {/* Option 1: Manual Creation */}
-        <TouchableOpacity
-          activeOpacity={0.88}
-          onPress={() => router.push('/create/manual')}
-          style={styles.optionCard}
-        >
-          <View style={styles.optionIconWrapper}>
-            <Ionicons name="create-outline" size={26} color={colors.primary} />
-          </View>
-          <View style={styles.optionContent}>
-            <View style={styles.optionTitleRow}>
-              <Text style={styles.optionTitle}>Create manually</Text>
-              <View style={styles.badgeRecommended}>
-                <Text style={styles.badgeText}>RECOMMENDED</Text>
-              </View>
-            </View>
-            <Text style={styles.optionDescription}>
-              Craft your narrative step-by-step: define target audiences, select ad distribution channels, and calculate reach.
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
-        </TouchableOpacity>
-
-        {/* Option 2: Voice Creation (Prototype with Fallback) */}
-        <TouchableOpacity
-          activeOpacity={0.88}
-          onPress={handleVoiceOption}
-          style={[styles.optionCard, styles.voiceOptionCard]}
-        >
-          <View style={[styles.optionIconWrapper, styles.voiceIconWrapper]}>
-            <Ionicons
-              name={isRecording ? 'radio' : 'mic-outline'}
-              size={26}
-              color={isRecording ? colors.error : colors.primary}
-            />
-          </View>
-          <View style={styles.optionContent}>
-            <View style={styles.optionTitleRow}>
-              <Text style={styles.optionTitle}>Create with your voice</Text>
-              <View style={styles.badgePrototype}>
-                <Text style={styles.badgePrototypeText}>AI VOICE OUTLINE</Text>
-              </View>
-            </View>
-            <Text style={styles.optionDescription}>
-              {isRecording
-                ? 'Listening and structuring narrative...'
-                : 'Speak freely for 60 seconds. Our assistant drafts headline, claims, and audience criteria with manual verification fallback.'}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
-        </TouchableOpacity>
-      </View>
-
-      {/* Saved Drafts Section */}
-      <SectionHeader
-        title="Saved Drafts"
-        subtitle="Resume your unfinished campaign drafts"
-      />
-
-      {drafts.length > 0 ? (
-        drafts.map(draft => (
-          <TouchableOpacity
-            key={draft.id}
-            onPress={() => handleResumeDraft(draft)}
-            activeOpacity={0.8}
-            style={styles.draftCard}
-          >
-            <View style={styles.draftIconBox}>
-              <Ionicons
-                name={draft.mode === 'voice' ? 'mic' : 'document-text'}
-                size={18}
-                color={colors.primary}
-              />
-            </View>
-            <View style={styles.draftInfo}>
-              <Text style={styles.draftTitle} numberOfLines={1}>
-                {draft.title}
-              </Text>
-              <Text style={styles.draftMeta}>
-                {draft.category} • Target ${draft.targetAmount.toLocaleString()} • Saved {draft.savedAt}
-              </Text>
-            </View>
-            <Button
-              title="Resume"
-              onPress={() => handleResumeDraft(draft)}
-              variant="secondary"
-              size="sm"
-            />
-          </TouchableOpacity>
-        ))
-      ) : (
-        <View style={styles.noDraftsBox}>
-          <Text style={styles.noDraftsText}>No saved drafts yet.</Text>
-        </View>
-      )}
-
-      {/* Trust & Review Protocol Notice */}
-      <View style={styles.trustNotice}>
-        <View style={styles.trustIconCircle}>
-          <Ionicons name="shield-checkmark" size={20} color={colors.primary} />
-        </View>
-        <View style={styles.trustNoticeTextContainer}>
-          <Text style={styles.trustNoticeTitle}>Universal Trust Standard (UUTS)</Text>
-          <Text style={styles.trustNoticeBody}>
-            All campaigns undergo fact-checking and communications integrity review.
-            Contributions are locked into escrow until claims are certified for public ad placement.
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.title}>Start an Amplification Campaign</Text>
+          <Text style={styles.subtitle}>
+            Mobilize community advertising pools to place fact-checked civic messages directly in front of targeted citizens.
           </Text>
         </View>
-      </View>
+
+        {/* Creation Mode Options */}
+        <View style={styles.optionsContainer}>
+          {/* Option 1: Manual Creation */}
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={handleCreateManually}
+            style={styles.optionCard}
+          >
+            <View style={styles.optionIconWrapper}>
+              <Ionicons name="create-outline" size={26} color={colors.primary} />
+            </View>
+            <View style={styles.optionContent}>
+              <View style={styles.optionTitleRow}>
+                <Text style={styles.optionTitle}>Create manually</Text>
+                <View style={styles.badgeRecommended}>
+                  <Text style={styles.badgeText}>RECOMMENDED</Text>
+                </View>
+              </View>
+              <Text style={styles.optionDescription}>
+                Follow our 5-step editorial workflow: define basics, structure evidence, select ad placements, plan reach, and set goals.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
+          </TouchableOpacity>
+
+          {/* Option 2: Voice Creation */}
+          <TouchableOpacity
+            activeOpacity={0.88}
+            onPress={() => setShowVoiceModal(true)}
+            style={[styles.optionCard, styles.voiceOptionCard]}
+          >
+            <View style={[styles.optionIconWrapper, styles.voiceIconWrapper]}>
+              <Ionicons name="mic-outline" size={26} color={colors.primary} />
+            </View>
+            <View style={styles.optionContent}>
+              <View style={styles.optionTitleRow}>
+                <Text style={styles.optionTitle}>Create with your voice</Text>
+                <View style={styles.badgePrototype}>
+                  <Text style={styles.badgePrototypeText}>SPEECH-TO-DRAFT</Text>
+                </View>
+              </View>
+              <Text style={styles.optionDescription}>
+                Speak your idea for 60 seconds. Our assistant structures claims and audience criteria into an editable 5-step draft.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textTertiary} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Saved In-Progress Drafts Section */}
+        <SectionHeader
+          title={`Saved Drafts (${activeDrafts.length})`}
+          subtitle="Resume editing or modify unfinished campaigns"
+        />
+
+        {activeDrafts.length > 0 ? (
+          activeDrafts.map(draft => (
+            <View key={draft.id} style={styles.draftCard}>
+              <TouchableOpacity
+                onPress={() => handleResumeDraft(draft)}
+                style={styles.draftClickableArea}
+                activeOpacity={0.7}
+              >
+                <View style={styles.draftIconBox}>
+                  <Ionicons
+                    name={draft.mode === 'voice' ? 'mic' : 'document-text'}
+                    size={20}
+                    color={colors.primary}
+                  />
+                </View>
+                <View style={styles.draftInfo}>
+                  <Text style={styles.draftTitle} numberOfLines={1}>
+                    {draft.title || 'Untitled Draft'}
+                  </Text>
+                  <Text style={styles.draftMeta}>
+                    Step {draft.currentStep} of 5 • {draft.category} • Updated {formatDraftDate(draft.updatedAt)}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Action Buttons */}
+              <View style={styles.draftActionsRow}>
+                <Button
+                  title="Resume"
+                  onPress={() => handleResumeDraft(draft)}
+                  variant="secondary"
+                  size="sm"
+                />
+                <TouchableOpacity
+                  onPress={() => handleDeleteDraft(draft)}
+                  style={styles.deleteDraftButton}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons name="trash-outline" size={18} color={colors.error} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))
+        ) : (
+          <View style={styles.noDraftsBox}>
+            <Ionicons name="document-text-outline" size={32} color={colors.textTertiary} />
+            <Text style={styles.noDraftsTitle}>No in-progress drafts</Text>
+            <Text style={styles.noDraftsText}>Start a new manual or voice campaign above.</Text>
+          </View>
+        )}
+
+        {/* Submitted Campaigns Area */}
+        {submittedCampaigns.length > 0 && (
+          <View style={styles.submittedSection}>
+            <SectionHeader
+              title={`Submitted Campaigns (${submittedCampaigns.length})`}
+              subtitle="Campaigns currently under fact-checking and UUTS verification"
+            />
+            {submittedCampaigns.map(sub => (
+              <View key={sub.id} style={styles.submittedCard}>
+                <View style={styles.submittedTop}>
+                  <View style={styles.submittedBadge}>
+                    <Ionicons name="time" size={12} color={colors.primary} />
+                    <Text style={styles.submittedBadgeText}>AWAITING REVIEW</Text>
+                  </View>
+                  <Text style={styles.submittedDate}>
+                    {formatDraftDate(sub.submissionTimestamp)}
+                  </Text>
+                </View>
+
+                <Text style={styles.submittedTitle}>{sub.title}</Text>
+                <Text style={styles.submittedSub}>
+                  Goal: ${sub.fundingGoal?.toLocaleString()} • {sub.category} • {sub.targetLocations.join(', ')}
+                </Text>
+                <Text style={styles.submittedNotice}>
+                  Claims and sources are currently being audited by certified fact-checkers. Unspent escrow protected.
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Universal Trust Standard Notice */}
+        <View style={styles.trustNotice}>
+          <View style={styles.trustIconCircle}>
+            <Ionicons name="shield-checkmark" size={22} color={colors.primary} />
+          </View>
+          <View style={styles.trustNoticeTextContainer}>
+            <Text style={styles.trustNoticeTitle}>Universal Trust Standard (UUTS)</Text>
+            <Text style={styles.trustNoticeBody}>
+              All campaigns undergo objective verification. Contributions are deposited into third-party escrow and only released for certified advertising distribution.
+            </Text>
+          </View>
+        </View>
+
+        {/* Voice Assisted Modal */}
+        <VoiceAssistedModal
+          visible={showVoiceModal}
+          onClose={() => setShowVoiceModal(false)}
+          onDraftCreated={handleVoiceDraftCreated}
+        />
+      </ScrollView>
     </ScreenContainer>
   );
 }
 
 const styles = StyleSheet.create({
+  scrollContent: {
+    paddingBottom: spacing.massive,
+  },
   header: {
-    paddingTop: spacing.md,
+    paddingTop: spacing.xs,
     marginBottom: spacing.lg,
   },
   title: {
@@ -265,16 +351,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.surface,
     padding: spacing.md,
-    borderRadius: radii.md,
+    borderRadius: radii.lg,
     borderWidth: 1,
     borderColor: colors.borderSubtle,
-    marginBottom: spacing.xs,
+    marginBottom: spacing.sm,
+    justifyContent: 'space-between',
+  },
+  draftClickableArea: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
     gap: spacing.sm,
   },
   draftIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: radii.sm,
+    width: 40,
+    height: 40,
+    borderRadius: radii.md,
     backgroundColor: colors.surfaceSubtle,
     alignItems: 'center',
     justifyContent: 'center',
@@ -285,7 +377,7 @@ const styles = StyleSheet.create({
   draftTitle: {
     ...typography.labelMedium,
     color: colors.textPrimary,
-    fontWeight: '600',
+    fontWeight: '700',
   },
   draftMeta: {
     ...typography.bodySmall,
@@ -293,15 +385,91 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
-  noDraftsBox: {
-    padding: spacing.md,
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
+  draftActionsRow: {
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: spacing.xs,
+    marginLeft: spacing.sm,
+  },
+  deleteDraftButton: {
+    padding: 8,
+  },
+  noDraftsBox: {
+    padding: spacing.xl,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    marginVertical: spacing.xs,
+  },
+  noDraftsTitle: {
+    ...typography.labelMedium,
+    color: colors.textSecondary,
+    fontWeight: '600',
+    marginTop: spacing.xs,
   },
   noDraftsText: {
-    ...typography.bodyMedium,
+    ...typography.bodySmall,
     color: colors.textTertiary,
+    marginTop: 2,
+  },
+
+  // Submitted Campaigns
+  submittedSection: {
+    marginTop: spacing.lg,
+  },
+  submittedCard: {
+    backgroundColor: colors.surface,
+    padding: spacing.md,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    marginBottom: spacing.sm,
+  },
+  submittedTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  submittedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: colors.primarySurface,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: radii.pill,
+  },
+  submittedBadgeText: {
+    ...typography.labelSmall,
+    color: colors.primary,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  submittedDate: {
+    ...typography.bodySmall,
+    color: colors.textTertiary,
+    fontSize: 11,
+  },
+  submittedTitle: {
+    ...typography.headingSmall,
+    color: colors.textPrimary,
+    marginBottom: 2,
+  },
+  submittedSub: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    fontSize: 12,
+    marginBottom: 6,
+  },
+  submittedNotice: {
+    ...typography.bodySmall,
+    color: colors.textTertiary,
+    fontSize: 11,
+    lineHeight: 16,
+    fontStyle: 'italic',
   },
 
   // Trust Notice
@@ -316,8 +484,8 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   trustIconCircle: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
     borderRadius: radii.pill,
     backgroundColor: colors.primarySurface,
     alignItems: 'center',
