@@ -10,6 +10,7 @@ import { Step3Visuals } from '../../components/create/Step3Visuals';
 import { Step4Reach } from '../../components/create/Step4Reach';
 import { Step5Submit } from '../../components/create/Step5Submit';
 import { SubmissionSuccessModal } from '../../components/create/SubmissionSuccessModal';
+import { createNewDraft } from '../../services/draftInitialData';
 import { colors } from '../../theme';
 
 export default function ManualCreationScreen() {
@@ -17,21 +18,27 @@ export default function ManualCreationScreen() {
   const params = useLocalSearchParams<{ draftId?: string; mode?: 'manual' | 'voice' }>();
   const store = useDraftStore();
 
-  const [draft, setDraft] = useState<CampaignDraft>(() =>
-    store.startOrResumeDraft(params.draftId, params.mode || 'manual')
-  );
+  const [draft, setDraft] = useState<CampaignDraft>(() => {
+    if (params.draftId) {
+      const found = store.getDraftById(params.draftId);
+      if (found) return found;
+    }
+    const currentActive = store.getActiveDraft();
+    if (currentActive && (!params.draftId || currentActive.id === params.draftId)) {
+      return currentActive;
+    }
+    return createNewDraft(params.mode || 'manual');
+  });
+
   const [currentStep, setCurrentStep] = useState<DraftStep>(draft.currentStep || 1);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
 
-  // Sync draft from store if active draft changes externally
+  // Sync active draft on mount
   useEffect(() => {
-    const active = store.getActiveDraft();
-    if (active && active.id === draft.id) {
-      setDraft(active);
-    }
-  }, [store]);
+    store.setActiveDraft(draft);
+  }, []);
 
   const autosaveStatus = store.getAutosaveStatus();
 

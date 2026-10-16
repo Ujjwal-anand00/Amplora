@@ -51,7 +51,9 @@ async function persistBookmarks() {
 loadPersistedBookmarks();
 
 function notifyListeners() {
-  listeners.forEach(fn => fn());
+  setTimeout(() => {
+    listeners.forEach(fn => fn());
+  }, 0);
 }
 
 export interface CampaignFilterOptions {

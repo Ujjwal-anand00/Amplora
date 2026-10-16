@@ -60,7 +60,9 @@ async function persistDrafts(): Promise<boolean> {
 loadPersistedDrafts();
 
 function notifyListeners() {
-  listeners.forEach(fn => fn());
+  setTimeout(() => {
+    listeners.forEach(fn => fn());
+  }, 0);
 }
 
 export const draftStore = {
@@ -78,6 +80,17 @@ export const draftStore = {
 
   getAutosaveStatus(): AutosaveStatus {
     return autosaveStatus;
+  },
+
+  setActiveDraft(draft: CampaignDraft) {
+    activeDraft = { ...draft };
+    const idx = draftsList.findIndex(d => d.id === draft.id);
+    if (idx >= 0) {
+      draftsList[idx] = { ...activeDraft };
+    } else {
+      draftsList.unshift({ ...activeDraft });
+    }
+    notifyListeners();
   },
 
   /**
