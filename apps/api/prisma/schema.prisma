@@ -1,0 +1,100 @@
+// apps/api/prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CampaignStatus {
+  DRAFT
+  UNDER_REVIEW
+  ACTIVE
+  FULLY_AMPLIFIED
+  COMPLETED
+}
+
+enum UserRole {
+  BACKER
+  CREATOR
+  REVIEWER
+  ADMIN
+}
+
+model User {
+  id            String         @id @default(uuid())
+  email         String         @unique
+  name          String
+  role          UserRole       @default(BACKER)
+  avatarUrl     String?
+  bio           String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  campaigns     Campaign[]     @relation("CreatedCampaigns")
+  contributions Contribution[]
+}
+
+model Campaign {
+  id               String                @id @default(uuid())
+  title            String
+  slug             String                @unique
+  tagLine          String
+  narrative        String
+  category         String
+  targetAmount     Float
+  raisedAmount     Float                 @default(0)
+  backerCount      Int                   @default(0)
+  reachMultiplier  Float                 @default(27.0) // ~27 people per $1 ad spend
+  estimatedReach   Int                   @default(0)
+  deliveredReach   Int                   @default(0)
+  trustScore       Int                   @default(90) // UUTS score out of 100
+  trustCategory    String                @default("Gold Standard")
+  status           CampaignStatus        @default(ACTIVE)
+  targetAudience   String
+  adChannels       String[]              // e.g. ["Meta Ads", "Google Search", "Local News"]
+  imageUrl         String
+  videoUrl         String?
+  creatorId        String
+  creator          User                  @relation("CreatedCampaigns", fields: [creatorId], references: [id])
+  daysLeft         Int                   @default(14)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  contributions    Contribution[]
+  updates          AmplificationUpdate[]
+
+  @@index([status, category])
+  @@index([slug])
+}
+
+model Contribution {
+  id           String   @id @default(uuid())
+  campaignId   String
+  campaign     Campaign @relation(fields: [campaignId], references: [id])
+  userId       String?
+  user         User?    @relation(fields: [userId], references: [id])
+  amount       Float
+  reachFunded  Int      // amount * reachMultiplier
+  backerName   String
+  backerEmail  String?
+  isAnonymous  Boolean  @default(false)
+  supportNote  String?
+  createdAt    DateTime @default(now())
+
+  @@index([campaignId])
+}
+
+model AmplificationUpdate {
+  id             String   @id @default(uuid())
+  campaignId     String
+  campaign       Campaign @relation(fields: [campaignId], references: [id])
+  title          String
+  content        String
+  impressions    Int
+  channels       String[]
+  screenshotUrl  String?
+  postedAt       DateTime @default(now())
+
+  @@index([campaignId])
+}
