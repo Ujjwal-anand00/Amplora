@@ -14,7 +14,7 @@ import { colors, radii, typography, spacing } from '../../theme';
 interface CampaignImageProps {
   source: string;
   category?: string;
-  style?: ViewStyle | ImageStyle;
+  style?: ViewStyle;
   borderRadius?: number;
   aspectRatio?: number;
 }
