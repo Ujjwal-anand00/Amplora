@@ -62,6 +62,7 @@ export default function CreateScreen() {
   };
 
   const handleVoiceDraftCreated = (draft: CampaignDraft) => {
+    store.setActiveDraft(draft);
     router.push({
       pathname: '/create/manual',
       params: { draftId: draft.id, mode: 'voice' },
@@ -86,7 +87,7 @@ export default function CreateScreen() {
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Start an Amplification Campaign</Text>
+          <Text style={styles.title}>Start an Amplora Campaign</Text>
           <Text style={styles.subtitle}>
             Mobilize community advertising pools to place fact-checked civic messages directly in front of targeted citizens.
           </Text>

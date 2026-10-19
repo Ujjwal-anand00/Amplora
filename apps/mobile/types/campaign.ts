@@ -22,8 +22,12 @@ export type CreatorType =
 export type CampaignStatus =
   | 'ACTIVE'
   | 'UNDER_REVIEW'
+  | 'AVAILABLE_FOR_FUNDING'
+  | 'FUNDING_GOAL_REACHED'
+  | 'PROMOTING'
   | 'FULLY_AMPLIFIED'
-  | 'COMPLETED';
+  | 'COMPLETED'
+  | string;
 
 export interface CampaignCreator {
   id: string;

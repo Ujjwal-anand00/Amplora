@@ -15,10 +15,11 @@ web-build/
 android/
 ios/
 
-# Environment
+# Environment & Secrets
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
+*.env
 
 # Logs
 npm-debug.log*

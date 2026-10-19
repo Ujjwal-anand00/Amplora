@@ -1,49 +1,52 @@
 export const colors = {
   // Brand foundation
-  background: '#F8F7F3', // Warm off-white background
-  surface: '#FFFFFF',    // Crisp card surface
-  surfaceSubtle: '#F2EFE9', // Subtle inset / tinted surface
+  background: '#F7F9FC',    // Amplora light background
+  surface: '#FFFFFF',       // Crisp white card surface
+  surfaceSubtle: '#F1F5F9', // Subtle slate inset / tinted surface
   surfaceElevated: '#FFFFFF',
+  navy: '#172B4D',          // Amplora deep navy
+  brandNavy: '#172B4D',
 
-  // Deep Forest Green Palette (Primary)
-  primary: '#174D3A',        // Deep forest green
-  primaryLight: '#23654E',
-  primaryDark: '#0E3628',
-  primarySurface: '#EBF4F0', // Very light tint for badges/highlights
+  // Primary Blue Palette
+  primary: '#2563EB',        // Primary vibrant blue
+  primaryLight: '#3B82F6',   // Bright blue accent
+  primaryDark: '#172B4D',    // Deep authoritative navy/blue
+  primarySurface: '#EFF6FF', // Soft pale blue tint for badges/highlights
+  primarySubtle: '#BFDBFE',  // Light blue border/accent
 
-  // Restrained Lime Accent
-  accent: '#C8F169',         // Restrained lime accent
-  accentDark: '#8EB528',
-  accentSubtle: '#F4FBE5',
+  // Accent & Secondary
+  accent: '#60A5FA',         // Sky blue accent
+  accentDark: '#2563EB',
+  accentSubtle: '#DBEAFE',   // Pale blue border/surface
 
   // Neutrals & Typography
-  textPrimary: '#20231F',    // Near-black primary text
-  textSecondary: '#777B73',  // Muted secondary text
-  textTertiary: '#A2A69E',   // Subtle metadata
+  textPrimary: '#0F172A',    // Near-black slate text
+  textSecondary: '#64748B',  // Slate secondary text
+  textTertiary: '#94A3B8',   // Subtle slate metadata
   textInverse: '#FFFFFF',
 
   // Borders & Dividers
-  borderSubtle: '#ECE9E2',   // Warm subtle border
-  borderMedium: '#DCD8CD',
-  borderStrong: '#C5C0B2',
+  borderSubtle: '#E2E8F0',   // Clean slate border
+  borderMedium: '#CBD5E1',
+  borderStrong: '#94A3B8',
 
   // Semantic Status
-  success: '#1B6B4A',
-  successSurface: '#E8F5EF',
-  warning: '#A06316',
-  warningSurface: '#FDF6E8',
-  error: '#B92828',
-  errorSurface: '#FDECEC',
-  info: '#1A5A7A',
-  infoSurface: '#EBF4F9',
+  success: '#16A34A',
+  successSurface: '#F0FDF4',
+  warning: '#D97706',
+  warningSurface: '#FFFBEB',
+  error: '#DC2626',
+  errorSurface: '#FEF2F2',
+  info: '#0284C7',
+  infoSurface: '#F0F9FF',
 
   // Universal Trust Score (UUTS) Tiers
-  trustGold: '#174D3A',
-  trustHigh: '#2B6E52',
-  trustModerate: '#787342',
+  trustGold: '#2563EB',
+  trustHigh: '#3B82F6',
+  trustModerate: '#64748B',
 
   // Interactive
-  touchHighlight: 'rgba(23, 77, 58, 0.08)',
+  touchHighlight: 'rgba(37, 99, 235, 0.08)',
 };
 
 export type Colors = typeof colors;

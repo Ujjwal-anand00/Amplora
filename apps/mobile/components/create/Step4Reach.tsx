@@ -12,6 +12,8 @@ import { colors, typography, spacing, radii } from '../../theme';
 import { CampaignDraft } from '../../types/draft';
 import { calculateUseOfFunds, formatCurrency, formatMetricNumber } from '../../lib/reachCalculator';
 import { Button } from '../ui/Button';
+import { GeminiButton } from '../ai/GeminiButton';
+import { GeminiAssistModal } from '../ai/GeminiAssistModal';
 
 const SEEDED_LOCATIONS = [
   'United States (National)',
@@ -71,6 +73,7 @@ interface Step4ReachProps {
 export function Step4Reach({ draft, onChange, errors = {} }: Step4ReachProps) {
   const [customLocation, setCustomLocation] = useState('');
   const [customInterest, setCustomInterest] = useState('');
+  const [showAiModal, setShowAiModal] = useState(false);
 
   // Location handlers
   const handleToggleLocation = (loc: string) => {
@@ -143,8 +146,48 @@ export function Step4Reach({ draft, onChange, errors = {} }: Step4ReachProps) {
   const fundsBreakdown = calculateUseOfFunds(benchmarkAmount);
   const selectedDuration = DURATION_OPTIONS.find(d => d.days === draft.durationDays) || DURATION_OPTIONS[1];
 
+  const handleApplyAiSuggestion = (suggestion: any) => {
+    const newLocations =
+      suggestion.geographicSuggestions && suggestion.geographicSuggestions.length > 0
+        ? suggestion.geographicSuggestions
+        : draft.targetLocations;
+    const newChannels =
+      suggestion.distributionChannels && suggestion.distributionChannels.length > 0
+        ? suggestion.distributionChannels
+        : draft.distributionChannels;
+    const newInterests =
+      suggestion.audienceSegments?.map((s: any) => s.segmentName) || draft.audienceInterests;
+
+    onChange({
+      targetLocations: newLocations,
+      distributionChannels: newChannels,
+      audienceInterests: newInterests,
+    });
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
+      {/* Gemini AI Reach Card */}
+      <View style={styles.aiHelperCard}>
+        <View style={styles.aiHelperContent}>
+          <View style={styles.aiHelperIconBox}>
+            <Ionicons name="sparkles" size={18} color={colors.primary} />
+          </View>
+          <View style={styles.aiHelperTextContainer}>
+            <Text style={styles.aiHelperTitle}>Plan Reach Mix with AI</Text>
+            <Text style={styles.aiHelperSub}>
+              Generate high-impact audience targeting segments, channel recommendations, and transparent CPM cost models.
+            </Text>
+          </View>
+        </View>
+        <GeminiButton
+          label="Optimize plan with AI"
+          variant="primary"
+          size="md"
+          style={styles.aiHelperButton}
+          onPress={() => setShowAiModal(true)}
+        />
+      </View>
       {/* 1. Geographic Targeting */}
       <View style={styles.formGroup}>
         <Text style={styles.label}>Geographic Targeting *</Text>
@@ -361,6 +404,15 @@ export function Step4Reach({ draft, onChange, errors = {} }: Step4ReachProps) {
           </Text>
         </View>
       </View>
+
+      {/* Google Gemini AI Modal */}
+      <GeminiAssistModal
+        visible={showAiModal}
+        stage={4}
+        currentData={draft}
+        onClose={() => setShowAiModal(false)}
+        onApply={handleApplyAiSuggestion}
+      />
     </ScrollView>
   );
 }
@@ -372,6 +424,50 @@ const styles = StyleSheet.create({
   contentContainer: {
     padding: spacing.md,
     paddingBottom: spacing.massive,
+  },
+  aiHelperCard: {
+    backgroundColor: colors.primarySurface,
+    borderWidth: 1,
+    borderColor: colors.primarySubtle,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  aiHelperContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.md,
+  },
+  aiHelperIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primarySubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+    marginTop: 1,
+  },
+  aiHelperTextContainer: {
+    flex: 1,
+  },
+  aiHelperTitle: {
+    ...typography.labelLarge,
+    color: colors.primaryDark,
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  aiHelperSub: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  aiHelperButton: {
+    width: '100%',
   },
   formGroup: {
     marginBottom: spacing.lg,

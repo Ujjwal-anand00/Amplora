@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { Campaign, CampaignCategory } from '../types/campaign';
 import { SEEDED_CAMPAIGNS } from './campaignData';
+import { apiClient } from './apiClient';
 
 const BOOKMARKS_STORAGE_KEY = 'campaign_saved_ids_v1';
 
@@ -10,6 +11,49 @@ const BOOKMARKS_STORAGE_KEY = 'campaign_saved_ids_v1';
 let masterCampaigns: Campaign[] = [...SEEDED_CAMPAIGNS];
 let savedCampaignIds: Set<string> = new Set(['camp-clean-air', 'camp-preventive-health']);
 let listeners: Array<() => void> = [];
+
+// Sync state tracking
+let syncStatus: 'idle' | 'syncing' | 'synced' | 'error' = 'idle';
+let syncError: string | null = null;
+
+// Sync with backend API
+async function syncWithBackend(): Promise<void> {
+  syncStatus = 'syncing';
+  syncError = null;
+  notifyListeners();
+
+  try {
+    const res = await apiClient.getCampaigns();
+    if (res && Array.isArray(res.data) && res.data.length > 0) {
+      // Update matching campaigns with live backend funding amounts
+      res.data.forEach((serverCamp: any) => {
+        const local = masterCampaigns.find(c => c.id === serverCamp.id || c.slug === serverCamp.slug);
+        if (local) {
+          // Backend amounts are in minor units (cents), convert to dollars if needed
+          const serverRaised =
+            typeof serverCamp.raisedAmount === 'number'
+              ? serverCamp.raisedAmount > 10000
+                ? serverCamp.raisedAmount / 100
+                : serverCamp.raisedAmount
+              : local.raisedAmount;
+          local.raisedAmount = serverRaised;
+          local.backerCount = serverCamp.backerCount || local.backerCount;
+        }
+      });
+      syncStatus = 'synced';
+      syncError = null;
+      notifyListeners();
+    }
+  } catch (err: any) {
+    syncStatus = 'error';
+    syncError = err.message || 'Unable to sync with live backend server.';
+    console.warn('[CampaignStore] Backend sync failed:', syncError);
+    notifyListeners();
+  }
+}
+
+// Initial sync in background
+syncWithBackend();
 
 // Persistence helpers
 async function loadPersistedBookmarks() {
@@ -65,6 +109,14 @@ export interface CampaignFilterOptions {
 }
 
 export const campaignStore = {
+  getSyncState() {
+    return { status: syncStatus, error: syncError };
+  },
+
+  async retrySync(): Promise<void> {
+    return syncWithBackend();
+  },
+
   getAllCampaigns(): Campaign[] {
     return [...masterCampaigns];
   },
@@ -96,7 +148,11 @@ export const campaignStore = {
     return savedCampaignIds.has(id);
   },
 
-  addContribution(campaignId: string, amount: number) {
+  addContribution(
+    campaignId: string,
+    amount: number,
+    backerInfo?: { backerName?: string; backerEmail?: string; isAnonymous?: boolean; supportNote?: string }
+  ) {
     const campaign = masterCampaigns.find(c => c.id === campaignId);
     if (campaign) {
       campaign.raisedAmount += amount;
@@ -105,6 +161,19 @@ export const campaignStore = {
         campaign.status = 'FULLY_AMPLIFIED';
       }
       notifyListeners();
+
+      // Fire live API contribution sync in background
+      apiClient
+        .createContribution(campaignId, {
+          amount: Math.round(amount * 100), // convert to minor units
+          backerName: backerInfo?.backerName || 'Community Backer',
+          backerEmail: backerInfo?.backerEmail,
+          isAnonymous: backerInfo?.isAnonymous,
+          supportNote: backerInfo?.supportNote,
+        })
+        .catch(err => {
+          console.log('[Store] Live contribution sync skipped or failed (offline mode):', err.message);
+        });
     }
   },
 

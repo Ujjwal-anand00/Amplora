@@ -4,97 +4,255 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  ADMIN
+  CREATOR
 }
 
 enum CampaignStatus {
   DRAFT
-  UNDER_REVIEW
-  ACTIVE
-  FULLY_AMPLIFIED
+  SUBMITTED_FOR_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  AVAILABLE_FOR_FUNDING
+  FUNDING_GOAL_REACHED
+  FUNDING_PERIOD_ENDED
+  DISTRIBUTION_PREPARATION
+  PROMOTING
   COMPLETED
+  REJECTED
+  CANCELLED
+  REFUND_PENDING
+  FAILED
 }
 
-enum UserRole {
-  BACKER
-  CREATOR
-  REVIEWER
-  ADMIN
+enum ContributionStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+enum ReviewOutcome {
+  APPROVED
+  CHANGES_REQUESTED
+  REJECTED
+}
+
+enum ReportStatus {
+  PROJECTED
+  IN_PROGRESS
+  FINAL
 }
 
 model User {
-  id            String         @id @default(uuid())
-  email         String         @unique
-  name          String
-  role          UserRole       @default(BACKER)
-  avatarUrl     String?
-  bio           String?
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  campaigns     Campaign[]     @relation("CreatedCampaigns")
-  contributions Contribution[]
+  id              String           @id @default(uuid())
+  email           String           @unique
+  name            String
+  passwordHash    String?
+  role            UserRole         @default(CREATOR)
+  avatarUrl       String?
+  bio             String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  campaigns       Campaign[]       @relation("CreatedCampaigns")
+  drafts          CampaignDraft[]
+  contributions   Contribution[]
+  reviewDecisions ReviewDecision[]
+  followedCampaigns FollowedCampaign[]
 }
 
 model Campaign {
-  id               String                @id @default(uuid())
-  title            String
-  slug             String                @unique
-  tagLine          String
-  narrative        String
-  category         String
-  targetAmount     Float
-  raisedAmount     Float                 @default(0)
-  backerCount      Int                   @default(0)
-  reachMultiplier  Float                 @default(27.0) // ~27 people per $1 ad spend
-  estimatedReach   Int                   @default(0)
-  deliveredReach   Int                   @default(0)
-  trustScore       Int                   @default(90) // UUTS score out of 100
-  trustCategory    String                @default("Gold Standard")
-  status           CampaignStatus        @default(ACTIVE)
-  targetAudience   String
-  adChannels       String[]              // e.g. ["Meta Ads", "Google Search", "Local News"]
-  imageUrl         String
-  videoUrl         String?
-  creatorId        String
-  creator          User                  @relation("CreatedCampaigns", fields: [creatorId], references: [id])
-  daysLeft         Int                   @default(14)
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
-  contributions    Contribution[]
-  updates          AmplificationUpdate[]
+  id                   String                  @id @default(uuid())
+  slug                 String                  @unique
+  title                String
+  tagLine              String
+  summary              String
+  narrative            String?
+  category             String
+  targetAmount         Int                     // Integer minor units (e.g. 500000 = $5,000.00)
+  raisedAmount         Int                     @default(0) // Integer minor units
+  backerCount          Int                     @default(0)
+  reachMultiplier      Float                   @default(27.0) // ~27 impressions per $1
+  estimatedReach       Int                     @default(0)
+  deliveredReach       Int                     @default(0)
+  trustScore           Int                     @default(92)
+  trustCategory        String                  @default("Universal Trust Standard")
+  status               CampaignStatus          @default(AVAILABLE_FOR_FUNDING)
+  targetAudience       String
+  targetLocations      String[]
+  audienceInterests    String[]
+  distributionChannels String[]
+  imageUrl             String
+  adHeadline           String?
+  adDescription        String?
+  ctaText              String?                 @default("Amplify This Message")
+  creatorName          String
+  creatorId            String?
+  creator              User?                   @relation("CreatedCampaigns", fields: [creatorId], references: [id])
+  daysLeft             Int                     @default(30)
+  durationDays         Int                     @default(30)
+  deadline             DateTime?
+  submissionTimestamp  DateTime?
+  approvalTimestamp    DateTime?
+  publishedTimestamp   DateTime?
+  completedTimestamp   DateTime?
+  createdAt            DateTime                @default(now())
+  updatedAt            DateTime                @updatedAt
+
+  storySections        CampaignStorySection[]
+  sources              CampaignSource[]
+  contributions        Contribution[]
+  updates              AmplificationUpdate[]
+  activities           CampaignActivity[]
+  reviewDecisions      ReviewDecision[]
+  report               CampaignReport?
+  followers            FollowedCampaign[]
 
   @@index([status, category])
   @@index([slug])
 }
 
-model Contribution {
-  id           String   @id @default(uuid())
+model CampaignDraft {
+  id             String         @id @default(uuid())
+  ownerId        String?
+  owner          User?          @relation(fields: [ownerId], references: [id])
+  anonymousToken String?
+  currentStep    Int            @default(1)
+  title          String         @default("Untitled Campaign")
+  status         String         @default("draft")
+  draftData      Json
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  @@index([ownerId])
+  @@index([anonymousToken])
+}
+
+model CampaignStorySection {
+  id           String    @id @default(uuid())
   campaignId   String
-  campaign     Campaign @relation(fields: [campaignId], references: [id])
-  userId       String?
-  user         User?    @relation(fields: [userId], references: [id])
-  amount       Float
-  reachFunded  Int      // amount * reachMultiplier
-  backerName   String
-  backerEmail  String?
-  isAnonymous  Boolean  @default(false)
-  supportNote  String?
-  createdAt    DateTime @default(now())
+  campaign     Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  heading      String
+  content      String
+  position     Int       @default(0)
+  imageUrl     String?
+  imageCaption String?
+  imageCredit  String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   @@index([campaignId])
 }
 
-model AmplificationUpdate {
-  id             String   @id @default(uuid())
-  campaignId     String
-  campaign       Campaign @relation(fields: [campaignId], references: [id])
-  title          String
-  content        String
-  impressions    Int
-  channels       String[]
-  screenshotUrl  String?
-  postedAt       DateTime @default(now())
+model CampaignSource {
+  id         String    @id @default(uuid())
+  campaignId String
+  campaign   Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  title      String
+  publisher  String?
+  url        String
+  relevance  String
+  position   Int       @default(0)
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
+  @@index([campaignId])
+}
+
+model Contribution {
+  id               String             @id @default(uuid())
+  campaignId       String
+  campaign         Campaign           @relation(fields: [campaignId], references: [id])
+  userId           String?
+  user             User?              @relation(fields: [userId], references: [id])
+  amount           Int                // Minor units (cents/paise)
+  currency         String             @default("USD")
+  netMediaAmount   Int                // 95% for ad buys
+  platformFee      Int                // 5% operations & escrow fee
+  totalCharged     Int                // Total minor units
+  reachFunded      Int                // Estimated impressions funded
+  backerName       String
+  backerEmail      String?
+  isAnonymous      Boolean            @default(false)
+  supportNote      String?
+  paymentProvider  String             @default("simulated_escrow")
+  paymentStatus    ContributionStatus @default(SUCCEEDED)
+  receiptReference String             @unique
+  createdAt        DateTime           @default(now())
+
+  @@index([campaignId])
+  @@index([userId])
+}
+
+model ReviewDecision {
+  id         String        @id @default(uuid())
+  campaignId String
+  campaign   Campaign      @relation(fields: [campaignId], references: [id])
+  reviewerId String
+  reviewer   User          @relation(fields: [reviewerId], references: [id])
+  decision   ReviewOutcome
+  feedback   String
+  createdAt  DateTime      @default(now())
+
+  @@index([campaignId])
+}
+
+model CampaignActivity {
+  id         String    @id @default(uuid())
+  campaignId String
+  campaign   Campaign  @relation(fields: [campaignId], references: [id])
+  actorId    String?
+  eventType  String
+  metadata   Json?
+  createdAt  DateTime  @default(now())
+
+  @@index([campaignId])
+}
+
+model CampaignReport {
+  id                        String       @id @default(uuid())
+  campaignId                String       @unique
+  campaign                  Campaign     @relation(fields: [campaignId], references: [id])
+  advertisingBudgetAllocated Int          // Minor units
+  advertisingSpend          Int          // Minor units
+  impressions               Int
+  clicks                    Int
+  estimatedReach            Int
+  measuredReach             Int?
+  reportingStatus           ReportStatus @default(PROJECTED)
+  generatedAt               DateTime     @default(now())
+}
+
+model AmplificationUpdate {
+  id            String    @id @default(uuid())
+  campaignId    String
+  campaign      Campaign  @relation(fields: [campaignId], references: [id])
+  title         String
+  content       String
+  impressions   Int
+  channels      String[]
+  screenshotUrl String?
+  postedAt      DateTime  @default(now())
+
+  @@index([campaignId])
+}
+
+model FollowedCampaign {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, campaignId])
+  @@index([userId])
   @@index([campaignId])
 }

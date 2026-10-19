@@ -52,6 +52,8 @@ export interface CampaignDraft {
   currentStep: DraftStep;
   status: CampaignLifecycleStatus;
   mode: 'manual' | 'voice';
+  voiceTranscript?: string;
+  aiGeneratedFields?: string[];
 
   // Step 1: Basics
   title: string; // Required, max 60 chars

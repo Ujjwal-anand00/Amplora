@@ -1,0 +1,29 @@
+# ==============================================================================
+# Render Blueprint Specification for Campaign Amplification Platform API
+# ==============================================================================
+# Docs: https://render.com/docs/blueprint-spec
+# To deploy: Connect repository on Render Dashboard -> New -> Blueprint
+
+services:
+  - type: web
+    name: campaign-amplification-api
+    runtime: node
+    plan: starter
+    region: oregon
+    # Root build and migration execution across workspace
+    buildCommand: npm install && npm run prisma:generate --workspace=api && npm run build --workspace=api
+    preDeployCommand: npm run prisma:deploy --workspace=api
+    startCommand: npm run start --workspace=api
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false # Supply Supabase Transaction Pooler (port 6543) in Render dashboard
+      - key: DIRECT_URL
+        sync: false # Supply Supabase Direct Connection (port 5432) in Render dashboard
+      - key: AUTH_SECRET
+        generateValue: true # Render automatically generates a cryptographically secure 256-bit string
+      - key: CLIENT_ORIGIN
+        value: "*" # Update to your production frontend domain (e.g. https://campaign-one-pearl.vercel.app)

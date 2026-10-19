@@ -14,6 +14,8 @@ import { CampaignDraft, DraftStep } from '../../types/draft';
 import { calculateUseOfFunds, formatCurrency, formatMetricNumber } from '../../lib/reachCalculator';
 import { Button } from '../ui/Button';
 import { CampaignPreviewModal } from './CampaignPreviewModal';
+import { GeminiButton } from '../ai/GeminiButton';
+import { GeminiAssistModal } from '../ai/GeminiAssistModal';
 
 interface Step5SubmitProps {
   draft: CampaignDraft;
@@ -34,6 +36,7 @@ export function Step5Submit({
 }: Step5SubmitProps) {
   const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [policyExpanded, setPolicyExpanded] = useState(false);
+  const [showAiModal, setShowAiModal] = useState(false);
 
   // Funding goal input
   const handleFundingGoalChange = (text: string) => {
@@ -104,7 +107,7 @@ export function Step5Submit({
         <View style={styles.fundingGoalHeader}>
           <Ionicons name="cash-outline" size={20} color={colors.primary} />
           <View>
-            <Text style={styles.fundingGoalTitle}>Amplification Funding Goal (USD) *</Text>
+            <Text style={styles.fundingGoalTitle}>Amplification Funding Goal (USD / $) *</Text>
             <Text style={styles.fundingGoalSub}>
               Enter the target media pool. This goal is set directly by the creator and is never auto-generated.
             </Text>
@@ -123,6 +126,7 @@ export function Step5Submit({
           />
         </View>
         {errors.fundingGoal && <Text style={styles.errorText}>{errors.fundingGoal}</Text>}
+
 
         {/* Live Reach Calculator for this goal */}
         <View style={styles.fundsCalculationBox}>
@@ -299,6 +303,27 @@ export function Step5Submit({
       </TouchableOpacity>
       {errors.policy && <Text style={styles.errorText}>{errors.policy}</Text>}
 
+      {/* Gemini AI Pre-Submission Audit Card */}
+      <View style={styles.aiAuditCard}>
+        <View style={styles.aiAuditHeader}>
+          <View style={styles.aiAuditLeft}>
+            <Ionicons name="sparkles" size={20} color={colors.primary} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.aiAuditTitle}>Pre-Submission Audit with AI</Text>
+              <Text style={styles.aiAuditSub}>
+                Scan your complete campaign draft for factual consistency, citation readiness, and clarity score before submitting for editorial review.
+              </Text>
+            </View>
+          </View>
+          <GeminiButton
+            label="Audit with AI"
+            variant="primary"
+            size="sm"
+            onPress={() => setShowAiModal(true)}
+          />
+        </View>
+      </View>
+
       {/* 5. Pre-Flight Validation Checklist */}
       <View style={styles.validationCard}>
         <Text style={styles.validationHeader}>Pre-Flight Submission Checklist</Text>
@@ -352,6 +377,15 @@ export function Step5Submit({
         draft={draft}
         onClose={() => setShowPreviewModal(false)}
       />
+
+      {/* Google Gemini AI Audit Modal */}
+      <GeminiAssistModal
+        visible={showAiModal}
+        stage={5}
+        currentData={draft}
+        onClose={() => setShowAiModal(false)}
+        onApply={() => setShowAiModal(false)}
+      />
     </ScrollView>
   );
 }
@@ -363,6 +397,35 @@ const styles = StyleSheet.create({
   contentContainer: {
     padding: spacing.md,
     paddingBottom: spacing.massive,
+  },
+
+  aiAuditCard: {
+    backgroundColor: colors.surfaceSubtle,
+    borderWidth: 1,
+    borderColor: colors.borderSubtle,
+    borderRadius: radii.xl,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  aiAuditHeader: {
+    gap: spacing.sm,
+  },
+  aiAuditLeft: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    alignItems: 'flex-start',
+  },
+  aiAuditTitle: {
+    ...typography.labelLarge,
+    color: colors.primary,
+    fontWeight: '700',
+  },
+  aiAuditSub: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    fontSize: 12,
+    lineHeight: 16,
+    marginTop: 2,
   },
 
   // Funding Goal Card

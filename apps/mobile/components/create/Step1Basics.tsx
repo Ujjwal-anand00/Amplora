@@ -13,8 +13,8 @@ import { colors, typography, spacing, radii } from '../../theme';
 import { CampaignDraft } from '../../types/draft';
 import { CampaignCategory } from '../../types/campaign';
 import { Button } from '../ui/Button';
-import { AiDraftModal } from './AiDraftModal';
-import { AiDraftSuggestion } from '../../services/aiAssistance';
+import { GeminiButton } from '../ai/GeminiButton';
+import { GeminiAssistModal } from '../ai/GeminiAssistModal';
 
 const CATEGORIES: CampaignCategory[] = [
   'Environment',
@@ -56,19 +56,16 @@ export function Step1Basics({ draft, onChange, errors = {} }: Step1BasicsProps) 
     });
   };
 
-  const handleApplyAiSuggestion = (suggestion: AiDraftSuggestion) => {
+  const handleApplyAiSuggestion = (suggestion: any) => {
     onChange({
-      title: suggestion.title,
-      category: suggestion.category,
-      summary: suggestion.summary,
-      whatIsItAbout: suggestion.whatIsItAbout,
-      whoToReach: suggestion.whoToReach,
-      whyItMatters: suggestion.whyItMatters,
-      evidenceSummary: suggestion.evidenceSummary,
-      adHeadline: suggestion.title,
-      adDescription: suggestion.summary,
-      targetLocations: suggestion.targetLocations,
-      audienceInterests: suggestion.audienceInterests,
+      title: suggestion.title || draft.title,
+      category: suggestion.category || draft.category,
+      summary: suggestion.summary || draft.summary,
+      whatIsItAbout: suggestion.problemStatement || draft.whatIsItAbout,
+      whoToReach: suggestion.intendedOutcome || draft.whoToReach,
+      whyItMatters: suggestion.keyMessage || draft.whyItMatters,
+      adHeadline: suggestion.title || draft.adHeadline,
+      adDescription: suggestion.summary || draft.adDescription,
     });
   };
 
@@ -78,17 +75,20 @@ export function Step1Basics({ draft, onChange, errors = {} }: Step1BasicsProps) 
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
       {/* AI Assistance Action Card */}
       <View style={styles.aiHelperCard}>
-        <View style={styles.aiHelperLeft}>
-          <Ionicons name="sparkles" size={18} color={colors.primary} />
-          <View style={{ flex: 1 }}>
+        <View style={styles.aiHelperContent}>
+          <View style={styles.aiHelperIconBox}>
+            <Ionicons name="sparkles" size={18} color={colors.primary} />
+          </View>
+          <View style={styles.aiHelperTextContainer}>
             <Text style={styles.aiHelperTitle}>Need help structuring your campaign?</Text>
             <Text style={styles.aiHelperSub}>Generate an outline based on your topic. You can edit every field.</Text>
           </View>
         </View>
-        <Button
-          title="AI Assistant"
-          variant="secondary"
-          size="sm"
+        <GeminiButton
+          label="Create campaign with AI"
+          variant="primary"
+          size="md"
+          style={styles.aiHelperButton}
           onPress={() => setShowAiModal(true)}
         />
       </View>
@@ -277,11 +277,13 @@ export function Step1Basics({ draft, onChange, errors = {} }: Step1BasicsProps) 
         </View>
       </View>
 
-      {/* AI Draft Modal */}
-      <AiDraftModal
+      {/* Google Gemini AI Modal */}
+      <GeminiAssistModal
         visible={showAiModal}
+        stage={1}
+        currentData={draft}
         onClose={() => setShowAiModal(false)}
-        onApplySuggestion={handleApplyAiSuggestion}
+        onApply={handleApplyAiSuggestion}
       />
     </ScrollView>
   );
@@ -296,34 +298,48 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.massive,
   },
   aiHelperCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surfaceSubtle,
+    backgroundColor: colors.primarySurface,
     borderWidth: 1,
-    borderColor: colors.borderSubtle,
+    borderColor: colors.primarySubtle,
     borderRadius: radii.lg,
     padding: spacing.md,
     marginBottom: spacing.lg,
-    gap: spacing.sm,
   },
-  aiHelperLeft: {
+  aiHelperContent: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.md,
+  },
+  aiHelperIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primarySubtle,
     alignItems: 'center',
-    gap: spacing.sm,
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+    marginTop: 1,
+  },
+  aiHelperTextContainer: {
     flex: 1,
   },
   aiHelperTitle: {
-    ...typography.labelMedium,
-    color: colors.primary,
+    ...typography.labelLarge,
+    color: colors.primaryDark,
     fontWeight: '700',
+    fontSize: 15,
   },
   aiHelperSub: {
     ...typography.bodySmall,
     color: colors.textSecondary,
-    fontSize: 12,
-    lineHeight: 16,
-    marginTop: 2,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  aiHelperButton: {
+    width: '100%',
   },
 
   formGroup: {

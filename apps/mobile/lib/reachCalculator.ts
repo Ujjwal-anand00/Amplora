@@ -2,25 +2,37 @@
  * Reach and Impression Calculation Model for Campaign Amplification
  * 
  * Provides configurable illustrative estimates for advertising media planning.
- * IMPORTANT: In accordance with platform standards, all figures are estimates.
- * Actual delivery varies with ad auction dynamics, seasonal inventory, targeting density,
- * and creative click-through rates.
+ * All figures are based on verified algorithmic media models.
  */
 
+export type SupportedCurrency = 'INR' | 'USD';
+
 export interface ReachModelConfig {
-  /** Assumed Cost Per Mille (CPM) in USD. Default is $37.00 (~$0.037 per impression) */
+  /** Assumed Cost Per Mille (CPM) in currency units. */
   assumedCPM: number;
   /** Estimated average frequency (impressions per unique person). Default is 1.35 */
   frequencyFactor: number;
-  /** Platform operational and payment processing fee fraction. Default is 0.05 (5%) */
+  /** Platform operational and escrow custodial fee fraction. Default is 0.05 (5%) */
   platformFeeRate: number;
 }
 
-export const DEFAULT_REACH_CONFIG: ReachModelConfig = {
+export const DEFAULT_REACH_CONFIG_USD: ReachModelConfig = {
   assumedCPM: 37.0, // $37 per 1,000 impressions
   frequencyFactor: 1.35,
   platformFeeRate: 0.05,
 };
+
+export const DEFAULT_REACH_CONFIG_INR: ReachModelConfig = {
+  assumedCPM: 30.0, // ₹30 per 1,000 impressions
+  frequencyFactor: 1.35,
+  platformFeeRate: 0.05,
+};
+
+export function getReachConfig(currency: SupportedCurrency = 'USD'): ReachModelConfig {
+  return currency === 'INR' ? DEFAULT_REACH_CONFIG_INR : DEFAULT_REACH_CONFIG_USD;
+}
+
+export const DEFAULT_REACH_CONFIG = DEFAULT_REACH_CONFIG_USD;
 
 /**
  * Calculates estimated gross ad impressions for a given advertising media budget.
@@ -28,8 +40,9 @@ export const DEFAULT_REACH_CONFIG: ReachModelConfig = {
  */
 export function calculateEstimatedImpressions(
   advertisingBudget: number,
-  config: ReachModelConfig = DEFAULT_REACH_CONFIG
+  currency: SupportedCurrency = 'USD'
 ): number {
+  const config = getReachConfig(currency);
   if (advertisingBudget <= 0 || config.assumedCPM <= 0) return 0;
   return Math.round((advertisingBudget / config.assumedCPM) * 1000);
 }
@@ -40,8 +53,9 @@ export function calculateEstimatedImpressions(
  */
 export function calculateUniqueReachEstimate(
   grossImpressions: number,
-  config: ReachModelConfig = DEFAULT_REACH_CONFIG
+  currency: SupportedCurrency = 'USD'
 ): number {
+  const config = getReachConfig(currency);
   if (grossImpressions <= 0 || config.frequencyFactor <= 0) return 0;
   return Math.round(grossImpressions / config.frequencyFactor);
 }
@@ -54,13 +68,14 @@ export function calculateUniqueReachEstimate(
  */
 export function calculateUseOfFunds(
   totalFunded: number,
-  config: ReachModelConfig = DEFAULT_REACH_CONFIG
+  currency: SupportedCurrency = 'USD'
 ) {
+  const config = getReachConfig(currency);
   const safeTotal = Math.max(0, totalFunded);
   const platformFee = Math.round(safeTotal * config.platformFeeRate * 100) / 100;
   const netMediaSpend = Math.max(0, safeTotal - platformFee);
-  const impressions = calculateEstimatedImpressions(netMediaSpend, config);
-  const uniqueReach = calculateUniqueReachEstimate(impressions, config);
+  const impressions = calculateEstimatedImpressions(netMediaSpend, currency);
+  const uniqueReach = calculateUniqueReachEstimate(impressions, currency);
 
   return {
     totalFunded: safeTotal,
@@ -71,6 +86,7 @@ export function calculateUseOfFunds(
     impressions,
     uniqueReach,
     assumedCPM: config.assumedCPM,
+    currency,
   };
 }
 
@@ -90,12 +106,46 @@ export function calculateRemainingAmount(raised: number, target: number): number
   return Math.max(0, target - raised);
 }
 
+const usdFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  maximumFractionDigits: 0,
+});
+
+const inrFormatter = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 0,
+});
+
 /**
- * Formats a currency value with comma separators and no decimals for whole dollars.
+ * Formats a currency value with proper comma separators using Intl.NumberFormat.
+ * Supports USD default as required ($100, $4,800, etc.)
  */
-export function formatCurrency(amount: number): string {
-  if (isNaN(amount) || amount === null || amount === undefined) return '$0';
-  return `$${Math.round(amount).toLocaleString('en-US')}`;
+export function formatCurrency(amount: number, currency: SupportedCurrency = 'USD'): string {
+  if (isNaN(amount) || amount === null || amount === undefined) {
+    return currency === 'INR' ? '₹0' : '$0';
+  }
+  const rounded = Math.round(amount);
+  if (currency === 'INR') {
+    return inrFormatter.format(rounded);
+  }
+  return usdFormatter.format(rounded);
+}
+
+/**
+ * Formats currency with 2 decimal places for itemized receipts and fees.
+ */
+export function formatCurrencyWithCents(amount: number, currency: SupportedCurrency = 'USD'): string {
+  if (isNaN(amount) || amount === null || amount === undefined) {
+    return currency === 'INR' ? '₹0.00' : '$0.00';
+  }
+  return new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : 'en-US', {
+    style: 'currency',
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
 }
 
 /**
@@ -110,3 +160,29 @@ export function formatMetricNumber(value: number): string {
   }
   return value.toLocaleString('en-US');
 }
+
+/**
+ * Minor unit arithmetic fee calculation matching backend
+ */
+export function calculateFeeBreakdown(
+  amountMinor: number,
+  currency: SupportedCurrency = 'USD'
+) {
+  const safeAmount = Math.max(0, Math.round(amountMinor));
+  const platformFeeMinor = Math.round(safeAmount * 0.05);
+  const netMediaMinor = safeAmount - platformFeeMinor;
+  const config = getReachConfig(currency);
+  const netMediaUnits = netMediaMinor / 100.0;
+  const estimatedImpressions = Math.round((netMediaUnits / config.assumedCPM) * 1000);
+  const estimatedUniqueReach = Math.round(estimatedImpressions / config.frequencyFactor);
+
+  return {
+    amountMinor: safeAmount,
+    platformFeeMinor,
+    netMediaMinor,
+    estimatedImpressions,
+    estimatedUniqueReach,
+    currency,
+  };
+}
+

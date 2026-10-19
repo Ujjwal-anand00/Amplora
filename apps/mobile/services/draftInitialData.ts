@@ -9,6 +9,7 @@ export function createNewDraft(mode: 'manual' | 'voice' = 'manual'): CampaignDra
     currentStep: 1,
     status: 'draft',
     mode,
+    voiceTranscript: '',
     title: '',
     category: 'Environment',
     creatorName: '',

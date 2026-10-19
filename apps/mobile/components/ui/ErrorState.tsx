@@ -13,7 +13,7 @@ interface ErrorStateProps {
 
 export const ErrorState: React.FC<ErrorStateProps> = ({
   title = 'Something went wrong',
-  message = 'We could not fetch campaign amplification data. Please check your connection and try again.',
+  message = 'We could not fetch Amplora campaign data. Please check your connection and try again.',
   onRetry,
   style,
 }) => {

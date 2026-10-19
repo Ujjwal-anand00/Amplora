@@ -95,13 +95,14 @@ export default function ManualCreationScreen() {
         stepErrors.distributionChannels = 'Please select at least one distribution channel.';
       }
     } else if (step === 5) {
-      if (!draft.fundingGoal || draft.fundingGoal < 500) {
-        stepErrors.fundingGoal = 'Please enter a valid funding goal of at least $500.';
+      if (!draft.fundingGoal || draft.fundingGoal < 50) {
+        stepErrors.fundingGoal = 'Please enter a valid funding goal of at least $50.';
       }
       if (!draft.policyAcknowledged) {
         stepErrors.policy = 'You must confirm and certify the UUTS submission policy.';
       }
     }
+
 
     setErrors(stepErrors);
     return Object.keys(stepErrors).length === 0;

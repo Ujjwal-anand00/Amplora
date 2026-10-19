@@ -15,13 +15,16 @@ import { HorizontalCampaignCard } from '../../components/campaigns/HorizontalCam
 import { CampaignCard } from '../../components/campaigns/CampaignCard';
 import { Button } from '../../components/ui/Button';
 import { Avatar } from '../../components/ui/Avatar';
+import { AmploraLogo } from '../../components/brand/AmploraLogo';
 import { colors, typography, spacing, radii, shadows } from '../../theme';
 import { useCampaignStore } from '../../services/campaignStore';
+import { useAuth } from '../../services/authContext';
 import { DEFAULT_REACH_CONFIG, formatMetricNumber } from '../../lib/reachCalculator';
 
 export default function HomeScreen() {
   const router = useRouter();
   const store = useCampaignStore();
+  const { user, isAuthenticated } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
 
   const allCampaigns = store.getAllCampaigns();
@@ -36,33 +39,27 @@ export default function HomeScreen() {
     }, 600);
   };
 
-  // 1 dollar gives approximately 27 impressions at $37 CPM
-  const impressionsPerDollar = Math.round((1 / DEFAULT_REACH_CONFIG.assumedCPM) * 1000);
+  // $100 gives approximately 2,703 impressions at $37 CPM
+  const sampleReachUnit = 100;
+  const impressionsPerSampleUnit = Math.round((sampleReachUnit / DEFAULT_REACH_CONFIG.assumedCPM) * 1000);
 
   return (
     <ScreenContainer refreshing={refreshing} onRefresh={onRefresh} padded={true}>
-      {/* 1. Header: Brand mark, wordmark, greeting, and profile shortcut */}
+      {/* 1. Header: Amplora Brand Logo, wordmark, and profile shortcut */}
       <View style={styles.header}>
-        <View style={styles.brandGroup}>
-          <View style={styles.brandLogoCircle}>
-            <Ionicons name="megaphone" size={17} color={colors.accent} />
-          </View>
-          <View>
-            <Text style={styles.brandWordmark}>CAMPAIGNS</Text>
-            <Text style={styles.brandSub}>Message Amplification</Text>
-          </View>
-        </View>
+        <AmploraLogo variant="primary" size="md" showTagline={true} />
 
         <TouchableOpacity
           onPress={() => router.push('/(tabs)/profile')}
           activeOpacity={0.7}
           style={styles.profileBtn}
-          accessibilityLabel="Open profile"
+          accessibilityLabel={isAuthenticated ? `Open profile for ${user?.name || 'Account'}` : 'Sign in to account'}
         >
           <Avatar
-            name="Advocate"
+            name={user?.name || 'Guest'}
             size={38}
-            source="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80"
+            source={user?.avatarUrl}
+            isGuest={!isAuthenticated}
           />
         </TouchableOpacity>
       </View>
@@ -88,12 +85,12 @@ export default function HomeScreen() {
         <View style={styles.reachIllustrationCard}>
           <View style={styles.reachEquationRow}>
             <View style={styles.budgetPill}>
-              <Text style={styles.budgetPillText}>$1.00</Text>
+              <Text style={styles.budgetPillText}>$100</Text>
             </View>
             <Ionicons name="arrow-forward" size={16} color={colors.primary} />
             <View style={styles.reachResultBox}>
               <Text style={styles.reachResultNumber}>
-                ≈ {impressionsPerDollar} Ad Impressions
+                ≈ {impressionsPerSampleUnit.toLocaleString('en-US')} Ad Impressions
               </Text>
               <Text style={styles.reachAssumptionText}>
                 Based on an illustrative demo assumption of ${DEFAULT_REACH_CONFIG.assumedCPM} CPM (~$0.037 / view).
@@ -104,6 +101,7 @@ export default function HomeScreen() {
             *Actual delivery varies with advertising costs, inventory, targeting density, and creative performance. Not a guaranteed audience size.
           </Text>
         </View>
+
 
         {/* Primary and Secondary CTAs */}
         <View style={styles.heroCtasRow}>

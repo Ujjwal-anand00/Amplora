@@ -2,89 +2,148 @@ import { CampaignDraft } from '../types/draft';
 import { CampaignCategory } from '../types/campaign';
 import { createNewDraft } from './draftInitialData';
 
-export interface VoiceSampleScenario {
-  id: string;
-  topic: string;
-  transcript: string;
-  extractedTitle: string;
-  extractedCategory: CampaignCategory;
-  extractedSummary: string;
-  extractedAudience: string;
+export interface AiVoiceDraftResult {
+  title: string;
+  summary: string;
+  category: string;
+  publicInterestObjective: string;
+  problemStatement: string;
+  campaignStory: string;
+  proposedSolution: string;
+  targetAudience: string;
+  suggestedChannels: string[];
+  adHeadline: string;
+  adCopy: string;
+  imagePrompt: string;
+  suggestedBudgetUSD: number;
+  estimatedReach: number;
+  missingInformation: string[];
+  isFallback?: boolean;
+  modelUsed?: string;
+  disclosure?: string;
 }
 
-export const SAMPLE_VOICE_TRANSCRIPTS: VoiceSampleScenario[] = [
-  {
-    id: 'voice-water',
-    topic: 'Independent Water Testing in Public Schools',
-    transcript:
-      'We need to fund independent third-party laboratory testing of drinking water fountains in our public schools. Municipal utilities keep flushing the lines before compliance testing, which masks dangerous lead spikes. We want to reach parents, teachers, and school board trustees across the metropolitan district to demand certified third-party chain of custody water sampling.',
-    extractedTitle: 'Independent Lead Testing in Public School Fountains',
-    extractedCategory: 'Health',
-    extractedSummary: 'Fund certified third-party laboratory testing of drinking water fountains across public school facilities.',
-    extractedAudience: 'Parents, teachers, and school board trustees in metropolitan water district 9',
-  },
-  {
-    id: 'voice-trails',
-    topic: 'Protect Public Hiking Easement',
-    transcript:
-      'A luxury housing developer is asking county commissioners to vacate the 98-year-old public trailhead easement at Mile Marker 14. If they close this gate, thousands of hikers and emergency volunteers lose access to the state ridgeline trails. We want to place targeted civic awareness ads alerting outdoor enthusiasts and local voters before the zoning board vote next month.',
-    extractedTitle: 'Protect Public Ridgeline Trailhead Easement',
-    extractedCategory: 'Environment',
-    extractedSummary: 'Place targeted civic awareness ads to prevent the privatization of historic public trail access at Mile Marker 14.',
-    extractedAudience: 'Active outdoor recreation enthusiasts, hikers, and voters residing within 40 miles',
-  },
-  {
-    id: 'voice-hospital',
-    topic: 'Hospital Billing Facility Fee Transparency',
-    transcript:
-      'Our community health clinic was acquired by a regional hospital monopoly, and now patients receiving a simple ten-minute checkup are receiving surprise facility fee bills of four hundred dollars on top of physician fees. We need an advertising campaign to inform low-income patients of their right to financial assistance and demand county oversight.',
-    extractedTitle: 'Stop Surprise Hospital Facility Surcharges',
-    extractedCategory: 'Health',
-    extractedSummary: 'Expose hidden hospital billing surcharges on routine clinic visits and mobilize patients for billing transparency.',
-    extractedAudience: 'Working families, uninsured patients, and municipal healthcare oversight committees',
-  },
+const VALID_CATEGORIES: CampaignCategory[] = [
+  'Environment',
+  'Health',
+  'Science',
+  'Education',
+  'Public Policy',
+  'Economic Policy',
+  'Community',
+  'Arts & Culture',
 ];
 
+export function normalizeCategory(categoryName: string): CampaignCategory {
+  const match = VALID_CATEGORIES.find(
+    c => c.toLowerCase() === categoryName.toLowerCase() ||
+         categoryName.toLowerCase().includes(c.toLowerCase())
+  );
+  if (match) return match;
+  if (categoryName.toLowerCase().includes('policy')) return 'Public Policy';
+  if (categoryName.toLowerCase().includes('water') || categoryName.toLowerCase().includes('climate')) return 'Environment';
+  if (categoryName.toLowerCase().includes('transit') || categoryName.toLowerCase().includes('road')) return 'Public Policy';
+  return 'Public Policy';
+}
+
 /**
- * Parses a freeform voice transcript into draft structured fields
+ * Maps the structured AI voice draft synthesis into the 5-step CampaignDraft data model
+ */
+export function buildCampaignDraftFromAiResult(
+  aiResult: AiVoiceDraftResult,
+  transcript: string
+): CampaignDraft {
+  const draft = createNewDraft('voice');
+  const cat = normalizeCategory(aiResult.category);
+
+  draft.title = aiResult.title.slice(0, 60);
+  draft.category = cat;
+  draft.summary = aiResult.summary;
+  draft.whatIsItAbout = aiResult.problemStatement;
+  draft.whoToReach = aiResult.targetAudience;
+  draft.whyItMatters = aiResult.publicInterestObjective;
+  draft.voiceTranscript = transcript;
+  draft.aiGeneratedFields = [
+    'title',
+    'summary',
+    'whatIsItAbout',
+    'whoToReach',
+    'whyItMatters',
+    'storyHeadline',
+    'storyIntro',
+    'adHeadline',
+    'adDescription',
+    'targetLocations',
+    'distributionChannels',
+    'fundingGoal',
+  ];
+
+  if (aiResult.missingInformation && aiResult.missingInformation.length > 0) {
+    draft.evidenceSummary = `Action required by creator: Verify and provide: ${aiResult.missingInformation.join('; ')}`;
+  } else {
+    draft.evidenceSummary = 'Synthesized from creator spoken brief. Verify citations in Step 2 before editorial submission.';
+  }
+
+  // Step 2: Story
+  draft.storyHeadline = aiResult.title;
+  draft.storyIntro = aiResult.summary;
+  draft.storySections = [
+    {
+      id: `sec-problem-${Date.now()}`,
+      title: 'Community Impact & Problem Context',
+      body: aiResult.problemStatement,
+    },
+    {
+      id: `sec-solution-${Date.now() + 1}`,
+      title: 'Proposed Solution & Public Interest Advocacy',
+      body: aiResult.proposedSolution,
+    },
+    {
+      id: `sec-narrative-${Date.now() + 2}`,
+      title: 'Why Amplification Matters',
+      body: aiResult.campaignStory,
+    },
+  ];
+
+  // Step 3: Visuals & Ad Creative
+  draft.adHeadline = aiResult.adHeadline || aiResult.title.slice(0, 30);
+  draft.adDescription = aiResult.adCopy || aiResult.summary.slice(0, 90);
+  draft.ctaText = 'Amplify This Message';
+
+  // Step 4: Reach
+  draft.targetLocations = ['United States (National)'];
+  draft.distributionChannels = Array.isArray(aiResult.suggestedChannels) && aiResult.suggestedChannels.length > 0
+    ? aiResult.suggestedChannels
+    : ['Meta (Facebook/Instagram)', 'Google Search Ads', 'Local Digital Displays'];
+
+  // Step 5: Submit
+  draft.fundingGoal = typeof aiResult.suggestedBudgetUSD === 'number' && aiResult.suggestedBudgetUSD > 0
+    ? aiResult.suggestedBudgetUSD
+    : 1500;
+
+  return draft;
+}
+
+/**
+ * Fallback parser for manual text input when offline or when external AI is unconfigured
  */
 export function parseVoiceTranscriptToDraft(transcript: string, mode: 'voice' = 'voice'): CampaignDraft {
   const draft = createNewDraft(mode);
+  draft.voiceTranscript = transcript;
 
-  // Check if matches sample scenario
-  const scenario = SAMPLE_VOICE_TRANSCRIPTS.find(s =>
-    transcript.toLowerCase().includes(s.topic.toLowerCase()) ||
-    transcript.toLowerCase().includes(s.extractedTitle.toLowerCase().slice(0, 15))
-  );
-
-  if (scenario) {
-    draft.title = scenario.extractedTitle;
-    draft.category = scenario.extractedCategory;
-    draft.summary = scenario.extractedSummary;
-    draft.whatIsItAbout = transcript;
-    draft.whoToReach = scenario.extractedAudience;
-    draft.whyItMatters = 'Transcribed from creator voice memo. Critical community issue requiring amplified public scrutiny.';
-    draft.storyIntro = transcript;
-    draft.storyHeadline = scenario.extractedTitle;
-    draft.adHeadline = scenario.extractedTitle;
-    draft.adDescription = scenario.extractedSummary;
-    return draft;
-  }
-
-  // Generic heuristic extraction
   const sentences = transcript
     .split(/[.?!]/)
     .map(s => s.trim())
     .filter(Boolean);
 
-  draft.title = (sentences[0] || 'Community Amplification Initiative').slice(0, 60);
-  draft.summary = (sentences[1] || sentences[0] || 'Community awareness message').slice(0, 180);
+  draft.title = (sentences[0] || 'Community Civic Amplification').slice(0, 60);
+  draft.summary = (sentences[1] || sentences[0] || 'Community public-interest awareness message').slice(0, 180);
   draft.whatIsItAbout = transcript;
   draft.storyIntro = transcript;
+  draft.storyHeadline = draft.title;
   draft.adHeadline = draft.title;
   draft.adDescription = draft.summary;
 
-  // Simple category detection
   const lower = transcript.toLowerCase();
   if (lower.includes('water') || lower.includes('health') || lower.includes('hospital') || lower.includes('doctor')) {
     draft.category = 'Health';
@@ -92,7 +151,7 @@ export function parseVoiceTranscriptToDraft(transcript: string, mode: 'voice' = 
     draft.category = 'Environment';
   } else if (lower.includes('school') || lower.includes('student') || lower.includes('library')) {
     draft.category = 'Education';
-  } else if (lower.includes('bus') || lower.includes('transit') || lower.includes('zoning') || lower.includes('vote')) {
+  } else {
     draft.category = 'Public Policy';
   }
 

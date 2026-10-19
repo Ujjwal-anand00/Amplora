@@ -176,7 +176,12 @@ export default function ExploreScreen() {
         </TouchableOpacity>
 
         {/* Horizontal Sort Pills */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.sortScroll}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.sortScrollView}
+          contentContainerStyle={styles.sortScroll}
+        >
           {SORT_OPTIONS.map(opt => {
             const isActive = selectedSort === opt.id;
             return (
@@ -273,6 +278,7 @@ const styles = StyleSheet.create({
   categoriesScrollContent: {
     paddingHorizontal: spacing.md,
     gap: spacing.xs,
+    paddingVertical: 2,
   },
   categoryChip: {
     paddingHorizontal: spacing.md,
@@ -344,8 +350,13 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: colors.primaryDark,
   },
+  sortScrollView: {
+    flex: 1,
+  },
   sortScroll: {
     gap: spacing.xs,
+    paddingRight: spacing.sm,
+    paddingVertical: 2,
   },
   sortPill: {
     paddingHorizontal: spacing.sm,

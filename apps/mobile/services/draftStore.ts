@@ -4,6 +4,8 @@ import * as SecureStore from 'expo-secure-store';
 import { CampaignDraft, AutosaveStatus } from '../types/draft';
 import { SEEDED_DRAFTS, createNewDraft } from './draftInitialData';
 import { campaignStore } from './campaignStore';
+import { apiClient } from './apiClient';
+import { queryClient } from './queryClient';
 
 const DRAFTS_STORAGE_KEY = 'campaign_drafts_v2';
 const ACTIVE_DRAFT_ID_KEY = 'campaign_active_draft_id_v2';
@@ -219,6 +221,22 @@ export const draftStore = {
 
     await persistDrafts();
     notifyListeners();
+
+    // Sync draft submission with live backend API
+    try {
+      await apiClient.saveDraft({
+        id: draft.id,
+        currentStep: 5,
+        title: draft.title,
+        draftData: draft,
+      });
+      await apiClient.submitDraftForReview(draftId);
+      queryClient.invalidateQueries({ queryKey: ['myCampaigns'] });
+      queryClient.invalidateQueries({ queryKey: ['creatorDashboard'] });
+    } catch (err: any) {
+      console.log('[DraftStore] Live backend draft submission notice:', err?.message || err);
+    }
+
     return submittedDraft;
   },
 

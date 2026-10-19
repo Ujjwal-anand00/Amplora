@@ -8,6 +8,7 @@ export const radii = {
   xxl: 24,
   pill: 999,
   round: 9999,
+  full: 9999,
 };
 
 export type Radii = typeof radii;

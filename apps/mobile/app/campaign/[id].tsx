@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Share,
   Linking,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +21,7 @@ import { Button } from '../../components/ui/Button';
 import { CampaignImage } from '../../components/ui/CampaignImage';
 import { Avatar } from '../../components/ui/Avatar';
 import { campaignStore, useCampaignStore } from '../../services/campaignStore';
+import { apiClient } from '../../services/apiClient';
 import {
   calculateProgressPercentage,
   calculateRemainingAmount,
@@ -28,17 +30,142 @@ import {
   formatMetricNumber,
   DEFAULT_REACH_CONFIG,
 } from '../../lib/reachCalculator';
-import { SupportingSource } from '../../types/campaign';
+import { SupportingSource, Campaign } from '../../types/campaign';
 
-const PLEDGE_PRESETS = [10, 25, 50, 100];
+const PLEDGE_PRESETS = [25, 50, 100, 250];
+
+function normalizeBackendCampaign(camp: any): Campaign {
+  return {
+    id: camp.id,
+    slug: camp.slug || camp.id,
+    title: camp.title || 'Untitled Campaign',
+    tagLine: camp.tagLine || camp.summary?.slice(0, 80) || '',
+    summary: camp.summary || '',
+    category: (camp.category as any) || 'Environment',
+    coverImage: camp.imageUrl || camp.coverImage || 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=1200&q=80',
+    coverImageCaption: camp.coverImageCaption || undefined,
+    creator: {
+      id: camp.creatorId || camp.creator?.id || 'cr-1',
+      name: camp.creatorName || camp.creator?.name || 'Campaign Organizer',
+      type: 'Grassroots Advocate',
+      role: 'Campaign Lead',
+      avatarUrl: camp.creator?.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+      location: 'National',
+      isVerified: true,
+    },
+    targetAmount: typeof camp.targetAmount === 'number' ? (camp.targetAmount > 10000 ? Math.round(camp.targetAmount / 100) : camp.targetAmount) : 5000,
+    raisedAmount: typeof camp.raisedAmount === 'number' ? (camp.raisedAmount > 10000 ? Math.round(camp.raisedAmount / 100) : camp.raisedAmount) : 0,
+    backerCount: camp.backerCount || 0,
+    daysLeft: camp.daysLeft ?? 30,
+    durationDays: camp.durationDays ?? 30,
+    createdAt: camp.createdAt ? (typeof camp.createdAt === 'string' ? camp.createdAt : camp.createdAt.toISOString()) : new Date().toISOString(),
+    status: camp.status || 'SUBMITTED_FOR_REVIEW',
+    targetAudience: typeof camp.targetAudience === 'object' && camp.targetAudience
+      ? camp.targetAudience
+      : {
+          description: typeof camp.targetAudience === 'string' ? camp.targetAudience : 'Targeted civic citizens',
+          locations: Array.isArray(camp.targetLocations) ? camp.targetLocations : ['National'],
+          demographics: 'Citizens interested in public accountability',
+          interests: Array.isArray(camp.audienceInterests) ? camp.audienceInterests : ['Civic Accountability'],
+        },
+    adChannels: Array.isArray(camp.distributionChannels) ? camp.distributionChannels : ['Meta Targeted Newsfeeds', 'Google Search & Display Ads'],
+    story: {
+      overview: camp.narrative || camp.summary || '',
+      sections: Array.isArray(camp.storySections) && camp.storySections.length > 0
+        ? camp.storySections.map((s: any, idx: number) => ({
+            id: s.id || `sec-${idx + 1}`,
+            title: s.heading || s.title || `Section ${idx + 1}`,
+            paragraphs: typeof s.content === 'string' ? [s.content] : (Array.isArray(s.paragraphs) ? s.paragraphs : [camp.summary || '']),
+          }))
+        : [
+            {
+              id: 'sec-1',
+              title: 'Campaign Background & Objectives',
+              paragraphs: [camp.narrative || camp.summary || 'Campaign details submitted for review.'],
+            },
+          ],
+    },
+    sources: Array.isArray(camp.sources) && camp.sources.length > 0
+      ? camp.sources.map((src: any, idx: number) => ({
+          id: src.id || `src-${idx + 1}`,
+          title: src.title || `Source ${idx + 1}`,
+          publisher: src.publisher || 'Verified Reference',
+          publishDate: '2026',
+          summary: src.relevance || 'Supporting evidence and verification documentation.',
+          url: src.url || 'https://example.com',
+        }))
+      : [],
+  };
+}
+
 
 export default function CampaignDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const store = useCampaignStore();
 
-  const campaign = store.getCampaignById(id || '');
+  const demoCampaign = store.getCampaignById(id || '');
+  const [remoteCampaign, setRemoteCampaign] = useState<Campaign | null>(null);
+  const [isLoadingRemote, setIsLoadingRemote] = useState<boolean>(!demoCampaign && Boolean(id));
+  const [remoteError, setRemoteError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!demoCampaign && id) {
+      let isMounted = true;
+      setIsLoadingRemote(true);
+      setRemoteError(null);
+
+      apiClient.getCampaignById(id)
+        .then(res => {
+          if (!isMounted) return;
+          if (res?.data) {
+            setRemoteCampaign(normalizeBackendCampaign(res.data));
+          } else {
+            setRemoteError('Campaign not found.');
+          }
+        })
+        .catch(err => {
+          if (!isMounted) return;
+          setRemoteError(err?.message || 'Unable to load campaign.');
+        })
+        .finally(() => {
+          if (isMounted) setIsLoadingRemote(false);
+        });
+
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [id, demoCampaign]);
+
+  const campaign = demoCampaign || remoteCampaign;
   const isSaved = campaign ? store.isCampaignSaved(campaign.id) : false;
+  const [isFollowing, setIsFollowing] = useState(false);
+
+  useEffect(() => {
+    if (campaign?.id) {
+      apiClient.isCampaignFollowed(campaign.id).then(res => {
+        if (res && res.followed) setIsFollowing(true);
+      }).catch(() => {});
+    }
+  }, [campaign?.id]);
+
+  const handleToggleFollow = async () => {
+    if (!campaign) return;
+    try {
+      if (isFollowing) {
+        await apiClient.unfollowCampaign(campaign.id);
+        setIsFollowing(false);
+        Alert.alert('Unfollowed', `You are no longer following updates for "${campaign.title}".`);
+      } else {
+        await apiClient.followCampaign(campaign.id);
+        setIsFollowing(true);
+        Alert.alert('Following Campaign', `You will now receive milestone notifications and ad delivery updates for "${campaign.title}".`);
+      }
+    } catch {
+      setIsFollowing(!isFollowing);
+    }
+  };
 
   // Accordion state
   const [expandedSections, setExpandedSections] = useState<{ [key: string]: boolean }>({
@@ -52,18 +179,30 @@ export default function CampaignDetailScreen() {
 
   // Backing modal state
   const [modalVisible, setModalVisible] = useState(false);
-  const [selectedPledge, setSelectedPledge] = useState<number>(25);
+  const [selectedPledge, setSelectedPledge] = useState<number>(50);
+
   const [customAmount, setCustomAmount] = useState<string>('');
   const [backerName, setBackerName] = useState<string>('');
   const [isAnonymous, setIsAnonymous] = useState<boolean>(false);
   const [backingInProgress, setBackingInProgress] = useState<boolean>(false);
+
+  if (isLoadingRemote) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Loading campaign details...</Text>
+      </View>
+    );
+  }
 
   if (!campaign) {
     return (
       <View style={styles.notFoundContainer}>
         <Ionicons name="document-text-outline" size={48} color={colors.textTertiary} />
         <Text style={styles.notFoundTitle}>Campaign not found</Text>
-        <Text style={styles.notFoundSub}>This campaign may have expired or been removed from the demo catalog.</Text>
+        <Text style={styles.notFoundSub}>
+          {remoteError || 'This campaign may have expired or been removed from the catalog.'}
+        </Text>
         <Button
           title="Back to Explore"
           onPress={() => router.back()}
@@ -129,10 +268,11 @@ export default function CampaignDetailScreen() {
   const fundingBreakdown = calculateUseOfFunds(campaign.targetAmount);
 
   const handleBackCampaign = () => {
-    if (effectivePledge < 1) {
-      Alert.alert('Invalid Pledge', 'Minimum contribution amount is $1.00.');
+    if (effectivePledge < 5) {
+      Alert.alert('Invalid Pledge', 'Minimum contribution amount is $5.');
       return;
     }
+
 
     setBackingInProgress(true);
     setTimeout(() => {
@@ -159,6 +299,18 @@ export default function CampaignDetailScreen() {
           headerShadowVisible: false,
           headerRight: () => (
             <View style={styles.headerRightActions}>
+              <TouchableOpacity
+                onPress={handleToggleFollow}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={styles.headerActionBtn}
+                accessibilityLabel="Follow and track campaign"
+              >
+                <Ionicons
+                  name={isFollowing ? 'notifications' : 'notifications-outline'}
+                  size={20}
+                  color={isFollowing ? colors.primary : colors.textPrimary}
+                />
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleBookmark}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
@@ -282,6 +434,31 @@ export default function CampaignDetailScreen() {
               fullWidth
               style={{ marginTop: spacing.sm }}
             />
+
+            {/* Quick Analytics & Audit Telemetry Links */}
+            <View style={styles.telemetryQuickRow}>
+              <TouchableOpacity
+                style={styles.telemetryQuickBtn}
+                onPress={() => router.push(`/campaign/${campaign.id}/analytics`)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="stats-chart-outline" size={15} color={colors.primary} />
+                <Text style={styles.telemetryQuickText}>Campaign Analytics</Text>
+              </TouchableOpacity>
+
+              {campaign.status === 'COMPLETED' && (
+                <TouchableOpacity
+                  style={[styles.telemetryQuickBtn, styles.telemetryQuickBtnReport]}
+                  onPress={() => router.push(`/campaign/${campaign.id}/report`)}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons name="document-text-outline" size={15} color={colors.primaryDark} />
+                  <Text style={[styles.telemetryQuickText, { color: colors.primaryDark }]}>
+                    Final Distribution Report
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
 
           {/* 4. Editorial Story Article */}
@@ -514,13 +691,22 @@ export default function CampaignDetailScreen() {
         <View style={styles.persistentBottomBar}>
           <View style={styles.bottomBarInfo}>
             <Text style={styles.bottomBarReach}>
-              ≈ {impressionsPerDollar} views / $1.00
+              ≈ {impressionsPerSampleUnit.toLocaleString('en-US')} views / $100
             </Text>
-            <Text style={styles.bottomBarSub}>Help amplify this message</Text>
+            <Text style={styles.bottomBarSub}>
+              {campaign.status === 'ACTIVE' || campaign.status === 'AVAILABLE_FOR_FUNDING' || campaign.status === 'FUNDING_GOAL_REACHED'
+                ? 'Help amplify this message'
+                : `Status: ${campaign.status}`}
+            </Text>
           </View>
           <Button
-            title="Back this Campaign"
-            onPress={() => setModalVisible(true)}
+            title={
+              campaign.status === 'ACTIVE' || campaign.status === 'AVAILABLE_FOR_FUNDING' || campaign.status === 'FUNDING_GOAL_REACHED'
+                ? 'Back this Campaign'
+                : 'Backing Closed'
+            }
+            onPress={() => router.push({ pathname: '/campaign/contribute', params: { campaignId: campaign.id } })}
+            disabled={!(campaign.status === 'ACTIVE' || campaign.status === 'AVAILABLE_FOR_FUNDING' || campaign.status === 'FUNDING_GOAL_REACHED')}
             variant="primary"
             size="md"
             style={styles.bottomBarBtn}
@@ -570,7 +756,7 @@ export default function CampaignDetailScreen() {
                         selectedPledge === amt && !customAmount && styles.presetButtonTextActive,
                       ]}
                     >
-                      ${amt}
+                      ${amt.toLocaleString('en-US')}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -582,6 +768,7 @@ export default function CampaignDetailScreen() {
                 <TextInput
                   value={customAmount}
                   onChangeText={val => setCustomAmount(val.replace(/[^0-9]/g, ''))}
+
                   placeholder="Custom amount"
                   keyboardType="numeric"
                   placeholderTextColor={colors.textTertiary}
@@ -644,12 +831,25 @@ export default function CampaignDetailScreen() {
   );
 }
 
-const impressionsPerDollar = Math.round((1 / DEFAULT_REACH_CONFIG.assumedCPM) * 1000);
+const impressionsPerSampleUnit = Math.round((100 / DEFAULT_REACH_CONFIG.assumedCPM) * 1000);
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+    backgroundColor: colors.background,
+    gap: spacing.sm,
+  },
+  loadingText: {
+    ...typography.bodyMedium,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
   },
   notFoundContainer: {
     flex: 1,
@@ -1335,5 +1535,34 @@ const styles = StyleSheet.create({
     ...typography.bodySmall,
     color: colors.textSecondary,
     flex: 1,
+  },
+  telemetryQuickRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderSubtle,
+  },
+  telemetryQuickBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: spacing.md,
+    borderRadius: radii.full,
+    backgroundColor: colors.surfaceSubtle,
+    gap: 4,
+  },
+  telemetryQuickBtnReport: {
+    backgroundColor: colors.accentSubtle,
+    borderWidth: 1,
+    borderColor: colors.accentDark,
+  },
+  telemetryQuickText: {
+    ...typography.labelSmall,
+    color: colors.primary,
+    fontWeight: '600',
+    fontSize: 11,
   },
 });

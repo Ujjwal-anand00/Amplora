@@ -13,6 +13,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, typography, spacing, radii } from '../../theme';
 import { CampaignDraft, DraftStorySection, DraftSource, DraftStatistic } from '../../types/draft';
 import { Button } from '../ui/Button';
+import { GeminiButton } from '../ai/GeminiButton';
+import { GeminiAssistModal } from '../ai/GeminiAssistModal';
 
 interface Step2StoryProps {
   draft: CampaignDraft;
@@ -22,6 +24,7 @@ interface Step2StoryProps {
 
 export function Step2Story({ draft, onChange, errors = {} }: Step2StoryProps) {
   const [showLiveArticlePreview, setShowLiveArticlePreview] = useState(false);
+  const [showAiModal, setShowAiModal] = useState(false);
 
   // New source input state
   const [newSourceTitle, setNewSourceTitle] = useState('');
@@ -147,8 +150,49 @@ export function Step2Story({ draft, onChange, errors = {} }: Step2StoryProps) {
     });
   };
 
+  const handleApplyAiSuggestion = (suggestion: any) => {
+    const newSections: DraftStorySection[] = [...draft.storySections];
+    if (suggestion.proposedSolution) {
+      newSections.push({
+        id: `sec-sol-${Date.now()}`,
+        title: 'Proposed Solution & Public Benefit',
+        body: suggestion.proposedSolution,
+      });
+    }
+    onChange({
+      storyHeadline: draft.storyHeadline || draft.title,
+      storyIntro: suggestion.narrative || draft.storyIntro,
+      storySections: newSections,
+      whyItMatters: suggestion.expectedBenefit || draft.whyItMatters,
+      evidenceSummary:
+        suggestion.evidenceSummaries?.map((s: any) => `${s.sourceTitle}: ${s.verifiedFact}`).join('\n') ||
+        draft.evidenceSummary,
+    });
+  };
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer} showsVerticalScrollIndicator={false}>
+      {/* Gemini AI Story Card */}
+      <View style={styles.aiHelperCard}>
+        <View style={styles.aiHelperContent}>
+          <View style={styles.aiHelperIconBox}>
+            <Ionicons name="sparkles" size={18} color={colors.primary} />
+          </View>
+          <View style={styles.aiHelperTextContainer}>
+            <Text style={styles.aiHelperTitle}>Structure Narrative with AI</Text>
+            <Text style={styles.aiHelperSub}>
+              Generate a compelling problem-to-solution narrative and synthesize your citations into evidence summaries.
+            </Text>
+          </View>
+        </View>
+        <GeminiButton
+          label="Draft story with AI"
+          variant="primary"
+          size="md"
+          style={styles.aiHelperButton}
+          onPress={() => setShowAiModal(true)}
+        />
+      </View>
       {/* 1. Story Headline */}
       <View style={styles.formGroup}>
         <Text style={styles.label}>Article Headline *</Text>
@@ -434,6 +478,15 @@ export function Step2Story({ draft, onChange, errors = {} }: Step2StoryProps) {
           ))}
         </View>
       )}
+
+      {/* Google Gemini AI Modal */}
+      <GeminiAssistModal
+        visible={showAiModal}
+        stage={2}
+        currentData={draft}
+        onClose={() => setShowAiModal(false)}
+        onApply={handleApplyAiSuggestion}
+      />
     </ScrollView>
   );
 }
@@ -445,6 +498,50 @@ const styles = StyleSheet.create({
   contentContainer: {
     padding: spacing.md,
     paddingBottom: spacing.massive,
+  },
+  aiHelperCard: {
+    backgroundColor: colors.primarySurface,
+    borderWidth: 1,
+    borderColor: colors.primarySubtle,
+    borderRadius: radii.lg,
+    padding: spacing.md,
+    marginBottom: spacing.lg,
+  },
+  aiHelperContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.md,
+  },
+  aiHelperIconBox: {
+    width: 32,
+    height: 32,
+    borderRadius: radii.sm,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.primarySubtle,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: spacing.sm,
+    marginTop: 1,
+  },
+  aiHelperTextContainer: {
+    flex: 1,
+  },
+  aiHelperTitle: {
+    ...typography.labelLarge,
+    color: colors.primaryDark,
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  aiHelperSub: {
+    ...typography.bodySmall,
+    color: colors.textSecondary,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 4,
+  },
+  aiHelperButton: {
+    width: '100%',
   },
   formGroup: {
     marginBottom: spacing.lg,
